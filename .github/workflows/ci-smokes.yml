@@ -1,0 +1,221 @@
+name: CI Smokes
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  workflow_dispatch:
+
+concurrency:
+  group: ci-smokes-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55432/emagreceplus
+  SHADOW_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:55433/emagreceplus_shadow
+  API_BASE_URL: http://127.0.0.1:3001
+  NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
+  NEXT_PUBLIC_USE_MOCKS: "false"
+  NEXT_PUBLIC_AUTH_MODE: mock
+
+jobs:
+  detect-supabase-secrets:
+    name: Detect Supabase Secrets
+    runs-on: ubuntu-latest
+    outputs:
+      has_supabase: ${{ steps.detect.outputs.has_supabase }}
+    steps:
+      - name: Check required secrets
+        id: detect
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          if [[ -n "$SUPABASE_URL" && -n "$SUPABASE_SERVICE_ROLE_KEY" && -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" ]]; then
+            echo "has_supabase=true" >> "$GITHUB_OUTPUT"
+            echo "Supabase secrets detected." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_supabase=false" >> "$GITHUB_OUTPUT"
+            echo "Supabase secrets missing. The frontend auth smoke job will be skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    name: Build And Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build API
+        run: npm run api:build
+
+      - name: Build Next app
+        run: npm run build
+
+  api-smoke:
+    name: API Smoke
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: emagreceplus
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d emagreceplus"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      postgres_shadow:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: emagreceplus_shadow
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d emagreceplus_shadow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed foundation data
+        run: npm run prisma:seed
+
+      - name: Seed operational fixtures
+        run: npm run prisma:seed:level2
+
+      - name: Run API smoke
+        run: npm run api:smoke
+
+  frontend-auth-smoke:
+    name: Frontend Auth Smoke
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - detect-supabase-secrets
+    if: needs.detect-supabase-secrets.outputs.has_supabase == 'true'
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: emagreceplus
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d emagreceplus"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      postgres_shadow:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: emagreceplus_shadow
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d emagreceplus_shadow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NEXT_PUBLIC_AUTH_MODE: "real"
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Apply Prisma migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed foundation data
+        run: npm run prisma:seed
+
+      - name: Seed operational fixtures
+        run: npm run prisma:seed:level2
+
+      - name: Run frontend auth smoke
+        run: npm run frontend:auth-smoke
+
+  frontend-auth-smoke-skipped:
+    name: Frontend Auth Smoke Skipped
+    runs-on: ubuntu-latest
+    needs:
+      - detect-supabase-secrets
+    if: needs.detect-supabase-secrets.outputs.has_supabase != 'true'
+    steps:
+      - name: Explain skip
+        run: |
+          echo "Skipping frontend auth smoke because Supabase CI secrets are not configured." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,1501 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma/client"
+}
+
+datasource db {
+  provider     = "postgresql"
+  relationMode = "foreignKeys"
+  schemas      = ["platform", "identity", "patients", "crm", "scheduling", "clinical"]
+}
+
+//////////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////////
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+
+  @@schema("platform")
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DISABLED
+
+  @@schema("platform")
+}
+
+enum UnitStatus {
+  ACTIVE
+  INACTIVE
+
+  @@schema("platform")
+}
+
+enum ProfessionalType {
+  PHYSICIAN
+  NUTRITIONIST
+  NURSE
+  PHYSICAL_TRAINER
+  RECEPTIONIST
+  FINANCIAL
+  ADMINISTRATIVE
+  OTHER
+
+  @@schema("platform")
+}
+
+enum CalendarType {
+  PROFESSIONAL
+  RESOURCE
+  UNIT
+
+  @@schema("platform")
+}
+
+enum ResourceType {
+  ROOM
+  EQUIPMENT
+  DEVICE
+  APPLICATION_STATION
+  BED
+  OTHER
+
+  @@schema("platform")
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+
+  @@schema("platform")
+}
+
+enum AppointmentSource {
+  INTERNAL
+  PATIENT_APP
+  CRM
+  AUTOMATION
+  OTHER
+
+  @@schema("platform")
+}
+
+enum ConfirmationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+  MANUAL
+
+  @@schema("platform")
+}
+
+enum ConfirmationStatus {
+  SENT
+  DELIVERED
+  CONFIRMED
+  DECLINED
+  NO_RESPONSE
+  FAILED
+
+  @@schema("platform")
+}
+
+enum CheckinType {
+  FRONTDESK
+  SELF_SERVICE
+  DIGITAL
+
+  @@schema("platform")
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  APPOINTMENT_BOOKED
+  PROPOSAL_SENT
+  WON
+  LOST
+
+  @@schema("platform")
+}
+
+enum ActivityType {
+  CALL
+  MESSAGE
+  TASK
+  NOTE
+  EMAIL
+  MEETING
+
+  @@schema("platform")
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+
+  @@schema("platform")
+}
+
+enum FlagSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@schema("platform")
+}
+
+enum EncounterStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+
+  @@schema("platform")
+}
+
+enum EncounterType {
+  INITIAL_CONSULT
+  FOLLOW_UP
+  PROCEDURE
+  TELECONSULT
+  REVIEW
+  OTHER
+
+  @@schema("platform")
+}
+
+enum ClinicalTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@schema("platform")
+}
+
+enum ClinicalTaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+
+  @@schema("platform")
+}
+
+enum AdverseEventSeverity {
+  MILD
+  MODERATE
+  SEVERE
+  CRITICAL
+
+  @@schema("platform")
+}
+
+enum AdverseEventStatus {
+  ACTIVE
+  RESOLVED
+  MONITORING
+  CLOSED
+
+  @@schema("platform")
+}
+
+enum PrescriptionType {
+  PRESCRIPTION
+  ORIENTATION
+  SUPPLEMENT_PLAN
+  TRAINING_GUIDANCE
+  OTHER
+
+  @@schema("platform")
+}
+
+enum FileOwnerType {
+  USER
+  PATIENT
+  SYSTEM
+
+  @@schema("platform")
+}
+
+//////////////////////////////////////////////////////
+// PLATFORM
+//////////////////////////////////////////////////////
+
+model Tenant {
+  id                   String       @id @default(cuid())
+  legalName            String       @db.VarChar(200)
+  tradeName            String?      @db.VarChar(200)
+  documentNumber       String?      @db.VarChar(30)
+  status               RecordStatus @default(ACTIVE)
+  subscriptionPlanCode String?      @db.VarChar(80)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  deletedAt            DateTime?
+
+  units               Unit[]
+  users               User[]
+  roles               Role[]
+  addresses           Address[]
+  files               FileObject[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  featureFlags        FeatureFlag[]
+  patients            Patient[]
+  leads               Lead[]
+  professionals       Professional[]
+  resources           Resource[]
+  calendars           Calendar[]
+  appointmentTypes    AppointmentType[]
+  appointments        Appointment[]
+  clinicalTasks       ClinicalTask[]
+  carePlans           CarePlan[]
+  adverseEvents       AdverseEvent[]
+  patientFlags        PatientFlag[]
+  tags                Tag[]
+  pipelines           Pipeline[]
+  lossReasons         LossReason[]
+  responsibleParties  ResponsibleParty[]
+  patientMergeHistory PatientMergeHistory[]
+  waitlists           Waitlist[]
+  encounters          Encounter[]
+
+  @@index([status, deletedAt])
+  @@map("tenants")
+  @@schema("platform")
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  street     String   @db.VarChar(200)
+  number     String?  @db.VarChar(30)
+  complement String?  @db.VarChar(120)
+  district   String?  @db.VarChar(120)
+  city       String   @db.VarChar(120)
+  state      String   @db.VarChar(10)
+  zipCode    String?  @db.VarChar(20)
+  country    String   @default("BR") @db.VarChar(2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant             Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  units              Unit[]
+  patientAddresses   PatientAddress[]
+  responsibleParties ResponsibleParty[]
+
+  @@index([tenantId])
+  @@map("addresses")
+  @@schema("platform")
+}
+
+model FileObject {
+  id         String         @id @default(cuid())
+  tenantId   String
+  storageKey String         @db.VarChar(500)
+  fileName   String         @db.VarChar(255)
+  mimeType   String         @db.VarChar(120)
+  sizeBytes  Int
+  checksum   String?        @db.VarChar(128)
+  uploadedBy String?
+  ownerType  FileOwnerType?
+  ownerId    String?        @db.VarChar(80)
+  createdAt  DateTime       @default(now())
+  deletedAt  DateTime?
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  uploadedByUser      User?                @relation("UploadedFiles", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  clinicalAttachments ClinicalAttachment[]
+  mealLogs            MealLog[]
+
+  @@index([tenantId, createdAt])
+  @@index([uploadedBy])
+  @@index([ownerType, ownerId])
+  @@map("files")
+  @@schema("platform")
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  actorUserId  String?
+  action       String   @db.VarChar(120)
+  resourceType String   @db.VarChar(120)
+  resourceId   String   @db.VarChar(80)
+  ipAddress    String?  @db.VarChar(64)
+  userAgent    String?  @db.VarChar(500)
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actorUser User?  @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+  @@schema("platform")
+}
+
+model Notification {
+  id            String    @id @default(cuid())
+  tenantId      String
+  recipientType String    @db.VarChar(60)
+  recipientId   String    @db.VarChar(80)
+  channel       String    @db.VarChar(40)
+  templateCode  String?   @db.VarChar(80)
+  payloadJson   Json?
+  status        String    @db.VarChar(40)
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+  readAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status, scheduledAt])
+  @@index([recipientType, recipientId])
+  @@map("notifications")
+  @@schema("platform")
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  tenantId    String
+  featureCode String   @db.VarChar(100)
+  isEnabled   Boolean  @default(false)
+  configJson  Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, featureCode])
+  @@map("feature_flags")
+  @@schema("platform")
+}
+
+model Unit {
+  id        String     @id @default(cuid())
+  tenantId  String
+  name      String     @db.VarChar(160)
+  code      String?    @db.VarChar(40)
+  timezone  String?    @db.VarChar(80)
+  addressId String?
+  status    UnitStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  address        Address?         @relation(fields: [addressId], references: [id], onDelete: SetNull)
+  userUnitAccess UserUnitAccess[]
+  resources      Resource[]
+  calendars      Calendar[]
+  appointments   Appointment[]
+  waitlists      Waitlist[]
+  encounters     Encounter[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status, deletedAt])
+  @@map("units")
+  @@schema("platform")
+}
+
+//////////////////////////////////////////////////////
+// IDENTITY
+//////////////////////////////////////////////////////
+
+model User {
+  id             String     @id @default(cuid())
+  tenantId       String
+  fullName       String     @db.VarChar(160)
+  email          String     @db.VarChar(191)
+  phone          String?    @db.VarChar(30)
+  externalAuthId String?    @unique @db.VarChar(191)
+  passwordHash   String?    @db.VarChar(255)
+  status         UserStatus @default(INVITED)
+  lastLoginAt    DateTime?
+  mfaEnabled     Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  deletedAt      DateTime?
+
+  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  userRoles             UserRole[]
+  unitAccess            UserUnitAccess[]
+  uploadedFiles         FileObject[]          @relation("UploadedFiles")
+  auditLogs             AuditLog[]
+  professionals         Professional[]
+  patientFlags          PatientFlag[]
+  stageChanges          LeadStageHistory[]
+  activities            Activity[]
+  proposals             Proposal[]
+  conversions           Conversion[]
+  checkins              Checkin[]
+  consultationNotes     ConsultationNote[]
+  carePlans             CarePlan[]
+  patientGoals          PatientGoal[]
+  adverseEvents         AdverseEvent[]
+  prescriptionRecords   PrescriptionRecord[]
+  clinicalTasksAssigned ClinicalTask[]
+  patientMergeHistory   PatientMergeHistory[]
+  createdAppointments   Appointment[]         @relation("AppointmentCreatedBy")
+  noShowRecords         NoShowRecord[]        @relation("NoShowRecordedBy")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status, deletedAt])
+  @@map("users")
+  @@schema("identity")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String   @db.VarChar(120)
+  code        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([tenantId, code])
+  @@map("roles")
+  @@schema("identity")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique @db.VarChar(120)
+  description String?  @db.VarChar(255)
+  moduleCode  String?  @db.VarChar(80)
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+  @@schema("identity")
+}
+
+model RolePermission {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+  @@schema("identity")
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+  @@schema("identity")
+}
+
+model UserUnitAccess {
+  id          String   @id @default(cuid())
+  userId      String
+  unitId      String
+  accessLevel String?  @db.VarChar(40)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, unitId])
+  @@map("user_unit_access")
+  @@schema("identity")
+}
+
+//////////////////////////////////////////////////////
+// PATIENTS
+//////////////////////////////////////////////////////
+
+model Patient {
+  id            String       @id @default(cuid())
+  tenantId      String
+  externalCode  String?      @db.VarChar(80)
+  fullName      String       @db.VarChar(200)
+  cpf           String?      @db.VarChar(14)
+  birthDate     DateTime?
+  sex           String?      @db.VarChar(30)
+  gender        String?      @db.VarChar(50)
+  maritalStatus String?      @db.VarChar(40)
+  primaryPhone  String?      @db.VarChar(30)
+  primaryEmail  String?      @db.VarChar(191)
+  status        RecordStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  profile             PatientProfile?
+  addresses           PatientAddress[]
+  emergencyContacts   EmergencyContact[]
+  responsibleParties  ResponsibleParty[]
+  patientTags         PatientTag[]
+  flags               PatientFlag[]
+  mergeSources        PatientMergeHistory[] @relation("MergeSource")
+  mergeTargets        PatientMergeHistory[] @relation("MergeTarget")
+  conversions         Conversion[]
+  appointments        Appointment[]
+  waitlists           Waitlist[]
+  noShowRecords       NoShowRecord[]
+  encounters          Encounter[]
+  carePlans           CarePlan[]
+  clinicalTasks       ClinicalTask[]
+  adverseEvents       AdverseEvent[]
+  problemLists        ProblemList[]
+  goals               PatientGoal[]
+  prescriptionRecords PrescriptionRecord[]
+  habitLogs           HabitLog[]
+  hydrationLogs       HydrationLog[]
+  mealLogs            MealLog[]
+  workoutLogs         WorkoutLog[]
+  sleepLogs           SleepLog[]
+  symptomLogs         SymptomLog[]
+
+  @@unique([tenantId, cpf])
+  @@index([tenantId, status, deletedAt])
+  @@index([tenantId, fullName])
+  @@index([tenantId, primaryPhone])
+  @@map("patients")
+  @@schema("patients")
+}
+
+model PatientProfile {
+  patientId        String   @id
+  occupation       String?  @db.VarChar(120)
+  referralSource   String?  @db.VarChar(120)
+  lifestyleSummary String?
+  goalsSummary     String?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("patient_profiles")
+  @@schema("patients")
+}
+
+model PatientAddress {
+  id          String   @id @default(cuid())
+  patientId   String
+  addressId   String
+  addressType String?  @db.VarChar(40)
+  createdAt   DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  address Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, addressId, addressType])
+  @@map("patient_addresses")
+  @@schema("patients")
+}
+
+model EmergencyContact {
+  id           String   @id @default(cuid())
+  patientId    String
+  name         String   @db.VarChar(160)
+  relationship String?  @db.VarChar(80)
+  phone        String?  @db.VarChar(30)
+  email        String?  @db.VarChar(191)
+  createdAt    DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("emergency_contacts")
+  @@schema("patients")
+}
+
+model ResponsibleParty {
+  id        String   @id @default(cuid())
+  tenantId  String
+  patientId String
+  fullName  String   @db.VarChar(160)
+  cpfCnpj   String?  @db.VarChar(20)
+  phone     String?  @db.VarChar(30)
+  email     String?  @db.VarChar(191)
+  addressId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patient Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  address Address? @relation(fields: [addressId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([patientId])
+  @@map("responsible_parties")
+  @@schema("patients")
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String   @db.VarChar(80)
+  code      String   @db.VarChar(80)
+  color     String?  @db.VarChar(20)
+  createdAt DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patientTags PatientTag[]
+
+  @@unique([tenantId, code])
+  @@map("tags")
+  @@schema("patients")
+}
+
+model PatientTag {
+  id        String   @id @default(cuid())
+  patientId String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, tagId])
+  @@map("patient_tags")
+  @@schema("patients")
+}
+
+model PatientFlag {
+  id          String       @id @default(cuid())
+  tenantId    String
+  patientId   String
+  flagType    String       @db.VarChar(80)
+  severity    FlagSeverity
+  description String?
+  active      Boolean      @default(true)
+  createdBy   String?
+  createdAt   DateTime     @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  creator User?   @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, patientId, active])
+  @@map("patient_flags")
+  @@schema("patients")
+}
+
+model PatientMergeHistory {
+  id              String   @id @default(cuid())
+  tenantId        String
+  sourcePatientId String
+  targetPatientId String
+  mergedBy        String
+  mergedAt        DateTime @default(now())
+
+  tenant        Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  sourcePatient Patient @relation("MergeSource", fields: [sourcePatientId], references: [id], onDelete: Restrict)
+  targetPatient Patient @relation("MergeTarget", fields: [targetPatientId], references: [id], onDelete: Restrict)
+  user          User    @relation(fields: [mergedBy], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, mergedAt])
+  @@map("patient_merge_history")
+  @@schema("patients")
+}
+
+//////////////////////////////////////////////////////
+// CRM
+//////////////////////////////////////////////////////
+
+model Lead {
+  id           String     @id @default(cuid())
+  tenantId     String
+  fullName     String     @db.VarChar(200)
+  phone        String?    @db.VarChar(30)
+  email        String?    @db.VarChar(191)
+  source       String?    @db.VarChar(80)
+  campaign     String?    @db.VarChar(120)
+  interestType String?    @db.VarChar(80)
+  status       LeadStatus @default(NEW)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  profile      LeadProfile?
+  activities   Activity[]
+  proposals    Proposal[]
+  stageHistory LeadStageHistory[]
+  conversion   Conversion?
+
+  @@index([tenantId, status, deletedAt])
+  @@index([tenantId, fullName])
+  @@index([tenantId, phone])
+  @@map("leads")
+  @@schema("crm")
+}
+
+model LeadProfile {
+  leadId       String   @id
+  mainGoal     String?  @db.VarChar(120)
+  budgetRange  String?  @db.VarChar(80)
+  urgencyLevel String?  @db.VarChar(80)
+  painPoint    String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("lead_profiles")
+  @@schema("crm")
+}
+
+model Pipeline {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String   @db.VarChar(120)
+  code      String   @db.VarChar(80)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  stages PipelineStage[]
+
+  @@unique([tenantId, code])
+  @@map("pipelines")
+  @@schema("crm")
+}
+
+model PipelineStage {
+  id         String  @id @default(cuid())
+  pipelineId String
+  name       String  @db.VarChar(120)
+  code       String  @db.VarChar(80)
+  position   Int
+  isFinal    Boolean @default(false)
+
+  pipeline     Pipeline           @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stageHistory LeadStageHistory[]
+
+  @@unique([pipelineId, code])
+  @@unique([pipelineId, position])
+  @@map("pipeline_stages")
+  @@schema("crm")
+}
+
+model LeadStageHistory {
+  id        String   @id @default(cuid())
+  leadId    String
+  stageId   String
+  changedBy String
+  changedAt DateTime @default(now())
+
+  lead  Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stage PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [changedBy], references: [id], onDelete: Restrict)
+
+  @@index([leadId, changedAt])
+  @@map("lead_stage_history")
+  @@schema("crm")
+}
+
+model Activity {
+  id             String       @id @default(cuid())
+  leadId         String
+  assignedUserId String?
+  activityType   ActivityType
+  description    String?
+  dueAt          DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+
+  lead         Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedUser User? @relation(fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, dueAt])
+  @@map("activities")
+  @@schema("crm")
+}
+
+model LossReason {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String   @db.VarChar(120)
+  code      String   @db.VarChar(80)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, code])
+  @@map("loss_reasons")
+  @@schema("crm")
+}
+
+model Proposal {
+  id                String         @id @default(cuid())
+  leadId            String
+  suggestedPlanName String?        @db.VarChar(160)
+  price             Decimal        @db.Decimal(12, 2)
+  discount          Decimal?       @db.Decimal(12, 2)
+  status            ProposalStatus @default(DRAFT)
+  expiresAt         DateTime?
+  createdBy         String
+  createdAt         DateTime       @default(now())
+
+  lead    Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([leadId, status])
+  @@map("proposals")
+  @@schema("crm")
+}
+
+model Conversion {
+  id          String   @id @default(cuid())
+  leadId      String   @unique
+  patientId   String
+  convertedBy String
+  createdAt   DateTime @default(now())
+
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [convertedBy], references: [id], onDelete: Restrict)
+
+  @@index([patientId])
+  @@map("conversions")
+  @@schema("crm")
+}
+
+//////////////////////////////////////////////////////
+// SCHEDULING
+//////////////////////////////////////////////////////
+
+model Professional {
+  id               String           @id @default(cuid())
+  tenantId         String
+  userId           String
+  professionalType ProfessionalType
+  licenseNumber    String?          @db.VarChar(80)
+  displayName      String           @db.VarChar(160)
+  colorHex         String?          @db.VarChar(20)
+  isSchedulable    Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  deletedAt        DateTime?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  calendars    Calendar[]
+  appointments Appointment[]
+  waitlists    Waitlist[]
+  encounters   Encounter[]
+
+  @@index([tenantId, professionalType, deletedAt])
+  @@index([userId])
+  @@map("professionals")
+  @@schema("scheduling")
+}
+
+model Resource {
+  id           String       @id @default(cuid())
+  tenantId     String
+  unitId       String
+  name         String       @db.VarChar(160)
+  resourceType ResourceType
+  code         String?      @db.VarChar(60)
+  status       RecordStatus @default(ACTIVE)
+  capacity     Int?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit         Unit          @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  calendars    Calendar[]
+  appointments Appointment[]
+
+  @@unique([tenantId, unitId, code])
+  @@index([tenantId, unitId, status, deletedAt])
+  @@map("resources")
+  @@schema("scheduling")
+}
+
+model Calendar {
+  id             String       @id @default(cuid())
+  tenantId       String
+  unitId         String
+  calendarType   CalendarType
+  professionalId String?
+  resourceId     String?
+  name           String       @db.VarChar(160)
+  status         RecordStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit         Unit           @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  professional Professional?  @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+  resource     Resource?      @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  rules        CalendarRule[]
+  appointments Appointment[]
+
+  @@index([tenantId, unitId, status, deletedAt])
+  @@index([professionalId])
+  @@index([resourceId])
+  @@map("calendars")
+  @@schema("scheduling")
+}
+
+model CalendarRule {
+  id                  String    @id @default(cuid())
+  calendarId          String
+  weekday             Int
+  startTime           String    @db.VarChar(8)
+  endTime             String    @db.VarChar(8)
+  slotDurationMinutes Int
+  breakMinutes        Int?
+  effectiveFrom       DateTime?
+  effectiveTo         DateTime?
+  isActive            Boolean   @default(true)
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@index([calendarId, weekday, isActive])
+  @@map("calendar_rules")
+  @@schema("scheduling")
+}
+
+model AppointmentType {
+  id                     String   @id @default(cuid())
+  tenantId               String
+  name                   String   @db.VarChar(120)
+  code                   String   @db.VarChar(80)
+  defaultDurationMinutes Int
+  requiresProfessional   Boolean  @default(true)
+  requiresResource       Boolean  @default(false)
+  generatesEncounter     Boolean  @default(true)
+  allowsTelehealth       Boolean  @default(false)
+  active                 Boolean  @default(true)
+  createdAt              DateTime @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  appointments Appointment[]
+  waitlists    Waitlist[]
+
+  @@unique([tenantId, code])
+  @@map("appointment_types")
+  @@schema("scheduling")
+}
+
+model Appointment {
+  id                String            @id @default(cuid())
+  tenantId          String
+  unitId            String
+  calendarId        String?
+  patientId         String
+  professionalId    String?
+  resourceId        String?
+  appointmentTypeId String
+  startsAt          DateTime
+  endsAt            DateTime
+  status            AppointmentStatus @default(SCHEDULED)
+  source            AppointmentSource @default(INTERNAL)
+  notes             String?
+  createdBy         String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit            Unit                      @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  calendar        Calendar?                 @relation(fields: [calendarId], references: [id], onDelete: SetNull)
+  patient         Patient                   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  professional    Professional?             @relation(fields: [professionalId], references: [id], onDelete: SetNull)
+  resource        Resource?                 @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  appointmentType AppointmentType           @relation(fields: [appointmentTypeId], references: [id], onDelete: Restrict)
+  creator         User?                     @relation("AppointmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  confirmations   AppointmentConfirmation[]
+  checkins        Checkin[]
+  encounter       Encounter?
+  noShowRecord    NoShowRecord?
+  tags            AppointmentTag[]
+
+  @@index([tenantId, unitId, startsAt])
+  @@index([patientId, startsAt])
+  @@index([professionalId, startsAt])
+  @@index([resourceId, startsAt])
+  @@index([status, startsAt])
+  @@map("appointments")
+  @@schema("scheduling")
+}
+
+model AppointmentConfirmation {
+  id            String              @id @default(cuid())
+  appointmentId String
+  channel       ConfirmationChannel
+  status        ConfirmationStatus
+  sentAt        DateTime?
+  respondedAt   DateTime?
+  metadataJson  Json?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, status])
+  @@map("appointment_confirmations")
+  @@schema("scheduling")
+}
+
+model Checkin {
+  id            String      @id @default(cuid())
+  appointmentId String
+  checkinType   CheckinType
+  checkedInAt   DateTime    @default(now())
+  checkedInBy   String?
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user        User?       @relation(fields: [checkedInBy], references: [id], onDelete: SetNull)
+
+  @@index([appointmentId, checkedInAt])
+  @@map("checkins")
+  @@schema("scheduling")
+}
+
+model Waitlist {
+  id                      String       @id @default(cuid())
+  tenantId                String
+  unitId                  String
+  patientId               String
+  appointmentTypeId       String
+  preferredProfessionalId String?
+  preferredPeriod         String?      @db.VarChar(80)
+  status                  RecordStatus @default(ACTIVE)
+  createdAt               DateTime     @default(now())
+
+  tenant                Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit                  Unit            @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  patient               Patient         @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  appointmentType       AppointmentType @relation(fields: [appointmentTypeId], references: [id], onDelete: Restrict)
+  preferredProfessional Professional?   @relation(fields: [preferredProfessionalId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, unitId, status])
+  @@index([patientId])
+  @@map("waitlists")
+  @@schema("scheduling")
+}
+
+model NoShowRecord {
+  id             String   @id @default(cuid())
+  appointmentId  String   @unique
+  patientId      String
+  recordedBy     String?
+  reason         String?
+  penaltyApplied Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  patient     Patient     @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  user        User?       @relation("NoShowRecordedBy", fields: [recordedBy], references: [id], onDelete: SetNull)
+
+  @@index([patientId, createdAt])
+  @@map("no_show_records")
+  @@schema("scheduling")
+}
+
+model AppointmentTag {
+  id            String @id @default(cuid())
+  appointmentId String
+  tagCode       String @db.VarChar(80)
+  tagLabel      String @db.VarChar(120)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId])
+  @@map("appointment_tags")
+  @@schema("scheduling")
+}
+
+//////////////////////////////////////////////////////
+// CLINICAL
+//////////////////////////////////////////////////////
+
+model Encounter {
+  id             String          @id @default(cuid())
+  tenantId       String
+  unitId         String
+  patientId      String
+  appointmentId  String?         @unique
+  professionalId String
+  encounterType  EncounterType
+  status         EncounterStatus @default(OPEN)
+  openedAt       DateTime        @default(now())
+  closedAt       DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  patient             Patient              @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  unit                Unit                 @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  appointment         Appointment?         @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  professional        Professional         @relation(fields: [professionalId], references: [id], onDelete: Restrict)
+  anamnesis           Anamnesis?
+  consultationNotes   ConsultationNote[]
+  prescriptionRecords PrescriptionRecord[]
+  clinicalTasks       ClinicalTask[]
+  attachments         ClinicalAttachment[]
+  adverseEvents       AdverseEvent[]
+
+  @@index([tenantId, unitId, openedAt])
+  @@index([patientId, openedAt])
+  @@index([professionalId, openedAt])
+  @@index([status, openedAt])
+  @@map("encounters")
+  @@schema("clinical")
+}
+
+model Anamnesis {
+  id                      String   @id @default(cuid())
+  encounterId             String   @unique
+  chiefComplaint          String?
+  historyOfPresentIllness String?
+  pastMedicalHistory      String?
+  pastSurgicalHistory     String?
+  familyHistory           String?
+  medicationHistory       String?
+  allergyHistory          String?
+  lifestyleHistory        String?
+  gynecologicalHistory    String?
+  notes                   String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@map("anamneses")
+  @@schema("clinical")
+}
+
+model ConsultationNote {
+  id          String    @id @default(cuid())
+  encounterId String
+  noteType    String?   @db.VarChar(60)
+  subjective  String?
+  objective   String?
+  assessment  String?
+  plan        String?
+  signedBy    String?
+  signedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  signer    User?     @relation(fields: [signedBy], references: [id], onDelete: SetNull)
+
+  @@index([encounterId, createdAt])
+  @@map("consultation_notes")
+  @@schema("clinical")
+}
+
+model CarePlan {
+  id            String    @id @default(cuid())
+  tenantId      String
+  patientId     String
+  currentStatus String?   @db.VarChar(50)
+  summary       String?
+  startDate     DateTime?
+  endDate       DateTime?
+  createdBy     String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patient Patient        @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  creator User           @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  items   CarePlanItem[]
+
+  @@index([tenantId, patientId, deletedAt])
+  @@map("care_plans")
+  @@schema("clinical")
+}
+
+model CarePlanItem {
+  id          String    @id @default(cuid())
+  carePlanId  String
+  itemType    String    @db.VarChar(60)
+  title       String    @db.VarChar(160)
+  description String?
+  status      String?   @db.VarChar(40)
+  targetDate  DateTime?
+  completedAt DateTime?
+
+  carePlan CarePlan @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+
+  @@index([carePlanId, status])
+  @@map("care_plan_items")
+  @@schema("clinical")
+}
+
+model ClinicalTask {
+  id               String               @id @default(cuid())
+  tenantId         String
+  patientId        String
+  encounterId      String?
+  assignedToUserId String?
+  taskType         String               @db.VarChar(80)
+  title            String               @db.VarChar(160)
+  description      String?
+  priority         ClinicalTaskPriority @default(MEDIUM)
+  status           ClinicalTaskStatus   @default(OPEN)
+  dueAt            DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  deletedAt        DateTime?
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter    Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  assignedUser User?      @relation(fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, dueAt])
+  @@index([patientId, status])
+  @@index([assignedToUserId, status])
+  @@map("clinical_tasks")
+  @@schema("clinical")
+}
+
+model ClinicalAttachment {
+  id             String   @id @default(cuid())
+  encounterId    String
+  fileId         String
+  attachmentType String?  @db.VarChar(80)
+  description    String?
+  uploadedAt     DateTime @default(now())
+
+  encounter Encounter  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  file      FileObject @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([encounterId, uploadedAt])
+  @@map("clinical_attachments")
+  @@schema("clinical")
+}
+
+model AdverseEvent {
+  id          String               @id @default(cuid())
+  tenantId    String
+  patientId   String
+  encounterId String?
+  severity    AdverseEventSeverity
+  eventType   String               @db.VarChar(80)
+  description String
+  onsetAt     DateTime?
+  resolvedAt  DateTime?
+  status      AdverseEventStatus   @default(ACTIVE)
+  recordedBy  String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patient   Patient    @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  encounter Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  recorder  User       @relation(fields: [recordedBy], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([patientId, status])
+  @@map("adverse_events")
+  @@schema("clinical")
+}
+
+model ProblemList {
+  id           String    @id @default(cuid())
+  patientId    String
+  problemCode  String?   @db.VarChar(40)
+  problemName  String    @db.VarChar(160)
+  status       String?   @db.VarChar(40)
+  onsetDate    DateTime?
+  resolvedDate DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, status])
+  @@map("problem_lists")
+  @@schema("clinical")
+}
+
+model PatientGoal {
+  id           String    @id @default(cuid())
+  patientId    String
+  goalType     String    @db.VarChar(80)
+  title        String    @db.VarChar(160)
+  targetValue  String?   @db.VarChar(120)
+  currentValue String?   @db.VarChar(120)
+  targetDate   DateTime?
+  status       String?   @db.VarChar(40)
+  createdBy    String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  creator User    @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([patientId, status, targetDate])
+  @@map("patient_goals")
+  @@schema("clinical")
+}
+
+model PrescriptionRecord {
+  id               String           @id @default(cuid())
+  encounterId      String
+  patientId        String
+  prescriptionType PrescriptionType
+  summary          String?
+  issuedBy         String
+  issuedAt         DateTime         @default(now())
+  createdAt        DateTime         @default(now())
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  issuer    User      @relation(fields: [issuedBy], references: [id], onDelete: Restrict)
+
+  @@index([encounterId, issuedAt])
+  @@index([patientId, issuedAt])
+  @@map("prescription_records")
+  @@schema("clinical")
+}
+
+//////////////////////////////////////////////////////
+// LIGHT ENGAGEMENT PLACEHOLDERS
+//////////////////////////////////////////////////////
+
+model HabitLog {
+  id        String   @id @default(cuid())
+  patientId String
+  loggedAt  DateTime @default(now())
+  kind      String   @db.VarChar(80)
+  valueText String?
+  valueNum  Float?
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, loggedAt])
+  @@map("habit_logs")
+  @@schema("clinical")
+}
+
+model HydrationLog {
+  id        String   @id @default(cuid())
+  patientId String
+  loggedAt  DateTime @default(now())
+  volumeMl  Int
+  createdAt DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, loggedAt])
+  @@map("hydration_logs")
+  @@schema("clinical")
+}
+
+model MealLog {
+  id              String   @id @default(cuid())
+  patientId       String
+  loggedAt        DateTime @default(now())
+  mealType        String?  @db.VarChar(60)
+  description     String?
+  photoFileId     String?
+  adherenceRating Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  patient   Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  photoFile FileObject? @relation(fields: [photoFileId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, loggedAt])
+  @@map("meal_logs")
+  @@schema("clinical")
+}
+
+model WorkoutLog {
+  id              String   @id @default(cuid())
+  patientId       String
+  loggedAt        DateTime @default(now())
+  workoutType     String?  @db.VarChar(80)
+  durationMinutes Int?
+  intensity       String?  @db.VarChar(40)
+  completed       Boolean  @default(true)
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, loggedAt])
+  @@map("workout_logs")
+  @@schema("clinical")
+}
+
+model SleepLog {
+  id                String   @id @default(cuid())
+  patientId         String
+  sleepDate         DateTime
+  hoursSlept        Float?
+  sleepQualityScore Int?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, sleepDate])
+  @@map("sleep_logs")
+  @@schema("clinical")
+}
+
+model SymptomLog {
+  id            String   @id @default(cuid())
+  patientId     String
+  loggedAt      DateTime @default(now())
+  symptomType   String   @db.VarChar(80)
+  severityScore Int?
+  description   String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, loggedAt])
+  @@map("symptom_logs")
+  @@schema("clinical")
+}

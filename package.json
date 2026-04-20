@@ -1,0 +1,57 @@
+{
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "api:build": "node scripts/fix-generated-prisma-imports.mjs && tsc -p apps/api/tsconfig.json",
+    "api:start": "node apps/api/dist/apps/api/src/main.js",
+    "api:smoke": "npm run api:build && npx tsx scripts/api-smoke.ts",
+    "frontend:auth-smoke": "npm run api:build && npm run build && npx tsx scripts/frontend-auth-smoke.ts",
+    "api:typecheck": "tsc -p apps/api/tsconfig.json --noEmit",
+    "prisma:generate": "prisma generate && node scripts/fix-generated-prisma-imports.mjs",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:seed:level2": "tsx prisma/seed-level-2.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@nestjs/common": "^11.1.19",
+    "@nestjs/core": "^11.1.19",
+    "@nestjs/platform-express": "^11.1.19",
+    "@prisma/adapter-pg": "^7.7.0",
+    "@prisma/client": "^7.7.0",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.103.3",
+    "@tanstack/react-query": "^5.90.5",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.8.0",
+    "next": "^16.2.4",
+    "pg": "^8.20.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-hook-form": "^7.72.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "^24.9.1",
+    "postcss": "^8.5.6",
+    "prisma": "^7.7.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}

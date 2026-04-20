@@ -1,0 +1,17 @@
+node_modules
+
+# envs
+.env
+.env.*
+!.env.example
+
+# build artifacts
+.next
+dist
+apps/api/dist
+
+# ts
+*.tsbuildinfo
+
+# generated
+/generated/prisma
