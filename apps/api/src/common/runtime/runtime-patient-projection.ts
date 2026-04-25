@@ -5,6 +5,7 @@ import { supabaseAdmin } from "../../lib/supabase-admin.ts";
 import { upsertRuntimeAppointmentFromLegacy } from "./runtime-appointment-writes.ts";
 import { upsertRuntimeAnamnesis, upsertRuntimeEncounterFromLegacy } from "./runtime-encounter-writes.ts";
 import { upsertRuntimePatientFromLegacy } from "./runtime-patient-writes.ts";
+import { isRuntimeSyncEnabled } from "./runtime-mode.ts";
 
 type ScopeResult = {
   tenantId: string;
@@ -13,13 +14,6 @@ type ScopeResult = {
     unitId: string;
   }>;
 };
-
-function isRuntimeSyncConfigured() {
-  return Boolean(
-    (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
 
 function deterministicUuid(namespace: string, legacyId: string) {
   const hash = createHash("sha1").update(`${namespace}:${legacyId}`).digest();
@@ -83,7 +77,7 @@ export async function syncPatientRuntimeProjection(
   prisma: PrismaService,
   legacyPatientId: string
 ) {
-  if (!isRuntimeSyncConfigured()) {
+  if (!isRuntimeSyncEnabled()) {
     return;
   }
 

@@ -45,6 +45,7 @@ import type { CreateEncounterDocumentDto } from "./dto/create-encounter-document
 import type { CreatePrescriptionRecordDto } from "./dto/create-prescription-record.dto.ts";
 import type { ScheduleReturnDto } from "./dto/schedule-return.dto.ts";
 import { syncPatientRuntimeProjection } from "../../common/runtime/runtime-patient-projection.ts";
+import { isApiRealAuthEnabled, isRuntimeSyncEnabled } from "../../common/runtime/runtime-mode.ts";
 import { supabaseAdmin } from "../../lib/supabase-admin.ts";
 import { PrismaService } from "../../prisma/prisma.service.ts";
 
@@ -1488,7 +1489,11 @@ export class ClinicalService {
   }
 
   private isRealAuthEnabled() {
-    return (process.env.API_AUTH_MODE ?? process.env.NEXT_PUBLIC_AUTH_MODE ?? "mock") === "real";
+    return isApiRealAuthEnabled();
+  }
+
+  private isRuntimeSyncEnabled() {
+    return isRuntimeSyncEnabled();
   }
 
   private async getStructuredRuntimeEncounterWithFallback(
@@ -1567,6 +1572,10 @@ export class ClinicalService {
     legacyPatientId: string,
     options: Parameters<typeof syncRuntimeEncounterProjection>[2]
   ) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return;
+    }
+
     try {
       await syncRuntimeEncounterProjection(this.prisma, legacyEncounterId, options);
     } catch (error) {
@@ -1582,6 +1591,10 @@ export class ClinicalService {
     params: Parameters<typeof completeRuntimeEncounterFromLegacy>[0],
     legacyPatientId: string
   ) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return null;
+    }
+
     try {
       return await completeRuntimeEncounterFromLegacy(params);
     } catch (error) {
@@ -1599,6 +1612,10 @@ export class ClinicalService {
     legacyAppointmentId: string,
     legacyPatientId: string
   ) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return null;
+    }
+
     try {
       return await scheduleRuntimeReturn(params);
     } catch (error) {
@@ -1619,6 +1636,10 @@ export class ClinicalService {
     legacyPatientId: string,
     options: Parameters<typeof syncRuntimeAppointmentProjection>[2]
   ) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return;
+    }
+
     try {
       await syncRuntimeAppointmentProjection(this.prisma, legacyAppointmentId, options);
     } catch (error) {
@@ -1634,6 +1655,13 @@ export class ClinicalService {
     legacyTenantId: string,
     legacyEncounterId: string
   ) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return {
+        anamnesis: null,
+        soapDraft: null,
+      };
+    }
+
     try {
       return await getRuntimeEncounterAutosaveOverlay({
         legacyTenantId,
@@ -1652,6 +1680,10 @@ export class ClinicalService {
   }
 
   private async clearRuntimeSoapDraftSilently(legacyTenantId: string, legacyEncounterId: string) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return;
+    }
+
     try {
       await clearRuntimeEncounterSoapDraft({
         legacyTenantId,
@@ -1670,6 +1702,10 @@ export class ClinicalService {
     legacyPatientId: string,
     options: Parameters<typeof syncRuntimeClinicalTaskProjection>[2]
   ) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return;
+    }
+
     try {
       await syncRuntimeClinicalTaskProjection(this.prisma, legacyTaskId, options);
     } catch (error) {

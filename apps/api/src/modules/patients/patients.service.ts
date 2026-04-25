@@ -28,6 +28,7 @@ import {
 } from "../../common/auth/request-context.ts";
 import { syncPatientRuntimeProjection } from "../../common/runtime/runtime-patient-projection.ts";
 import { upsertRuntimePatientFromLegacy } from "../../common/runtime/runtime-patient-writes.ts";
+import { isApiRealAuthEnabled, isRuntimeSyncEnabled } from "../../common/runtime/runtime-mode.ts";
 import { createSupabaseRequestClient } from "../../lib/supabase-request.ts";
 import { PrismaService } from "../../prisma/prisma.service.ts";
 
@@ -287,28 +288,30 @@ export class PatientsService {
       },
     });
 
-    try {
-      await upsertRuntimePatientFromLegacy({
-        legacyTenantId: tenantId,
-        legacyPatientId: patient.id,
-        fullName: patient.fullName,
-        cpf: patient.cpf,
-        birthDate: patient.birthDate?.toISOString().slice(0, 10) ?? null,
-        primaryPhone: patient.primaryPhone,
-        primaryEmail: patient.primaryEmail,
-        goalsSummary: patient.profile?.goalsSummary ?? null,
-        lifestyleSummary: patient.profile?.lifestyleSummary ?? null,
-        legacyCreatedByUserId: actorUserId,
-        metadata: {
-          source: "api_runtime_create",
-        },
-      });
-    } catch (error) {
-      console.error(
-        `[runtime:write] Falha na RPC dedicada de create patient para ${patient.id}; aplicando fallback de sync incremental.`,
-        error
-      );
-      await syncPatientRuntimeProjection(this.prisma, patient.id);
+    if (this.isRuntimeSyncEnabled()) {
+      try {
+        await upsertRuntimePatientFromLegacy({
+          legacyTenantId: tenantId,
+          legacyPatientId: patient.id,
+          fullName: patient.fullName,
+          cpf: patient.cpf,
+          birthDate: patient.birthDate?.toISOString().slice(0, 10) ?? null,
+          primaryPhone: patient.primaryPhone,
+          primaryEmail: patient.primaryEmail,
+          goalsSummary: patient.profile?.goalsSummary ?? null,
+          lifestyleSummary: patient.profile?.lifestyleSummary ?? null,
+          legacyCreatedByUserId: actorUserId,
+          metadata: {
+            source: "api_runtime_create",
+          },
+        });
+      } catch (error) {
+        console.error(
+          `[runtime:write] Falha na RPC dedicada de create patient para ${patient.id}; aplicando fallback de sync incremental.`,
+          error
+        );
+        await syncPatientRuntimeProjection(this.prisma, patient.id);
+      }
     }
 
     return {
@@ -860,7 +863,11 @@ export class PatientsService {
   }
 
   private isRealAuthEnabled() {
-    return (process.env.API_AUTH_MODE ?? process.env.NEXT_PUBLIC_AUTH_MODE ?? "mock") === "real";
+    return isApiRealAuthEnabled();
+  }
+
+  private isRuntimeSyncEnabled() {
+    return isRuntimeSyncEnabled();
   }
 
   private async fetchRuntimePatient360Payload(
@@ -894,6 +901,10 @@ export class PatientsService {
   }
 
   private async ensureRuntimePatientProjection(id: string, context?: AppRequestContext) {
+    if (!this.isRuntimeSyncEnabled()) {
+      return;
+    }
+
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
 
     const patient = await this.prisma.patient.findFirst({

@@ -18,11 +18,69 @@ const baseUrl = `http://127.0.0.1:${apiPort}`;
 const databaseUrl = process.env.DATABASE_URL ?? "";
 assert(databaseUrl, "DATABASE_URL ausente.");
 
+type ApiSmokeMode = "local" | "real";
+
+function readModeArg() {
+  for (let index = 2; index < process.argv.length; index += 1) {
+    const arg = process.argv[index];
+
+    if (arg === "--mode" || arg === "--smoke-mode") {
+      return process.argv[index + 1];
+    }
+
+    if (arg.startsWith("--mode=")) {
+      return arg.slice("--mode=".length);
+    }
+
+    if (arg.startsWith("--smoke-mode=")) {
+      return arg.slice("--smoke-mode=".length);
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeSmokeMode(value: string | undefined): ApiSmokeMode {
+  const normalized = value?.trim().toLowerCase();
+
+  switch (normalized) {
+    case undefined:
+    case "":
+    case "local":
+    case "mock":
+      return "local";
+    case "real":
+    case "runtime":
+      return "real";
+    default:
+      throw new Error(
+        `Modo de smoke invalido: ${value}. Use --mode=local, --mode=real ou API_SMOKE_MODE=local|real.`
+      );
+  }
+}
+
+function isRuntimeSyncExplicitlyDisabled(value: string | undefined) {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "disabled" || normalized === "off" || normalized === "false" || normalized === "0";
+}
+
+const smokeMode = normalizeSmokeMode(readModeArg() ?? process.env.API_SMOKE_MODE);
+const apiAuthMode = smokeMode === "real" ? "real" : "mock";
+const requestedRuntimeSyncMode = process.env.API_RUNTIME_SYNC_MODE ?? process.env.RUNTIME_SYNC_MODE;
+
+if (smokeMode === "real" && isRuntimeSyncExplicitlyDisabled(requestedRuntimeSyncMode)) {
+  throw new Error("api:smoke:real nao pode rodar com API_RUNTIME_SYNC_MODE desabilitado.");
+}
+
+process.env.API_SMOKE_MODE = smokeMode;
+process.env.API_AUTH_MODE = apiAuthMode;
+process.env.NEXT_PUBLIC_AUTH_MODE = apiAuthMode;
+process.env.API_RUNTIME_SYNC_MODE = smokeMode === "real" ? "enabled" : "disabled";
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg(databaseUrl),
   log: ["error"],
 });
-const apiAuthMode = process.env.API_AUTH_MODE ?? process.env.NEXT_PUBLIC_AUTH_MODE ?? "mock";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -254,6 +312,9 @@ function startApiProcess(): ChildProcess {
     env: {
       ...process.env,
       API_PORT: String(apiPort),
+      API_AUTH_MODE: apiAuthMode,
+      NEXT_PUBLIC_AUTH_MODE: apiAuthMode,
+      API_RUNTIME_SYNC_MODE: process.env.API_RUNTIME_SYNC_MODE,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -339,7 +400,21 @@ async function cleanup() {
 }
 
 function isRealAuthEnabled() {
-  return apiAuthMode === "real";
+  return smokeMode === "real";
+}
+
+function assertSmokeModeConfiguration() {
+  if (!isRealAuthEnabled()) {
+    return;
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  assert(supabaseUrl, "api:smoke:real exige SUPABASE_URL ou NEXT_PUBLIC_SUPABASE_URL.");
+  assert(serviceRoleKey, "api:smoke:real exige SUPABASE_SERVICE_ROLE_KEY.");
+  assert(publishableKey, "api:smoke:real exige NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.");
 }
 
 async function setupRequestAuth() {
@@ -693,8 +768,14 @@ async function ensureCommercialCatalogForSmokeTenant() {
 }
 
 async function main() {
+  assertSmokeModeConfiguration();
   await assertDatabaseAvailable(databaseUrl);
 
+  logStep(
+    smokeMode === "real"
+      ? "Modo real/runtime: auth real, RPCs Supabase, catalogo, documentos e assinatura serao exigidos"
+      : "Modo local/mock: validando rotas essenciais, shapes e fluxos minimos sem runtime Supabase"
+  );
   logStep("Consultando fixtures base");
 
   const [appointmentType, professional, tenant, pipelineStage] = await Promise.all([

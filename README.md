@@ -69,11 +69,22 @@ A proxima etapa de implementacao deve seguir esta ordem:
      `npm run prisma:seed:level2`.
   7. Rode os checks de base com `npm run typecheck`, `npm run api:typecheck`,
      `npm run api:build` e `npm run build`.
-  8. Rode `npm run api:smoke` somente com o Postgres local ativo, migrations
-     aplicadas e seeds carregados.
+  8. Rode `npm run api:smoke:local` somente com o Postgres local ativo,
+     migrations aplicadas e seeds carregados. O alias `npm run api:smoke`
+     aponta para esse modo seguro/local.
 - Os scripts `runtime:seed`, `runtime:seed:direct` e `runtime:seed:hybrid`
   existem para a trilha Supabase-first/homologacao e dependem das variaveis de
   runtime apropriadas.
+- `npm run api:smoke:local` forca `API_AUTH_MODE=mock`,
+  `NEXT_PUBLIC_AUTH_MODE=mock` e `API_RUNTIME_SYNC_MODE=disabled`; ele valida
+  rotas essenciais, shapes de resposta e fluxos minimos sem exigir catalogo,
+  settings, RPCs, assinatura ou artefatos reais do Supabase.
+- `npm run api:smoke:real` forca `API_AUTH_MODE=real`,
+  `NEXT_PUBLIC_AUTH_MODE=real` e `API_RUNTIME_SYNC_MODE=enabled`; ele exige
+  `SUPABASE_URL` ou `NEXT_PUBLIC_SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, alem do
+  Postgres local migrado/semeado, e valida catalogo comercial, settings runtime,
+  RPCs Supabase, documentos, artefatos e assinatura.
 - `npm run frontend:auth-smoke` depende de secrets Supabase reais disponiveis no
   ambiente.
 - `npm run dev` sobe frontend e API juntos para evitar `ERR_CONNECTION_REFUSED` em `http://localhost:3001`
