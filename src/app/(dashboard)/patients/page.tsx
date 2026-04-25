@@ -3,6 +3,8 @@
 import { useDeferredValue, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { usePermissions } from "@/hooks/use-permissions";
 import { PatientsFilters } from "@/modules/patients/components/patients-filters";
 import { PatientsTable } from "@/modules/patients/components/patients-table";
 import { usePatients } from "@/modules/patients/hooks/use-patients";
@@ -17,6 +19,7 @@ export default function PatientsPage() {
   const deferredSearch = useDeferredValue(search);
   const deferredTag = useDeferredValue(tag);
   const deferredFlag = useDeferredValue(flag);
+  const { can } = usePermissions();
   const { data, isLoading, isError } = usePatients({
     search: deferredSearch,
     status,
@@ -29,7 +32,11 @@ export default function PatientsPage() {
       <PageHeader
         title="Pacientes"
         description="Gerencie cadastro, acompanhamento e acesso rápido à ficha."
-        actions={<Button onClick={() => setModalOpen(true)}>Novo paciente</Button>}
+        actions={
+          can("patients:write") ? (
+            <Button onClick={() => setModalOpen(true)}>Novo paciente</Button>
+          ) : null
+        }
       />
       <div className="space-y-4">
         <PatientsFilters
@@ -44,7 +51,18 @@ export default function PatientsPage() {
         />
         {isLoading ? <p className="text-sm text-slate-500">Carregando pacientes...</p> : null}
         {isError ? <p className="text-sm text-red-600">Erro ao carregar pacientes.</p> : null}
-        {data ? (
+        {data && data.items.length === 0 ? (
+          <EmptyState
+            title="Nenhum paciente encontrado"
+            description="Ajuste os filtros ou cadastre um novo paciente para iniciar o acompanhamento."
+            action={
+              can("patients:write") ? (
+                <Button onClick={() => setModalOpen(true)}>Cadastrar paciente</Button>
+              ) : undefined
+            }
+          />
+        ) : null}
+        {data && data.items.length > 0 ? (
           <PatientsTable
             rows={data.items.map((item) => ({
               id: item.id,

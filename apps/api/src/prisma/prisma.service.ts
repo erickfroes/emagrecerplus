@@ -68,6 +68,14 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.client.patientGoal;
   }
 
+  get professional(): PrismaClientType["professional"] {
+    return this.client.professional;
+  }
+
+  get appointmentType(): PrismaClientType["appointmentType"] {
+    return this.client.appointmentType;
+  }
+
   get appointment(): PrismaClientType["appointment"] {
     return this.client.appointment;
   }
@@ -94,6 +102,10 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
 
   get consultationNote(): PrismaClientType["consultationNote"] {
     return this.client.consultationNote;
+  }
+
+  get prescriptionRecord(): PrismaClientType["prescriptionRecord"] {
+    return this.client.prescriptionRecord;
   }
 
   get clinicalTask(): PrismaClientType["clinicalTask"] {

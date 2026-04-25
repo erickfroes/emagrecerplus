@@ -1,0 +1,81 @@
+
+[api:smoke] Consultando fixtures base
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPrismaModule dependencies initialized[39m[38;5;3m +61ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPatientAppModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSettingsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mDashboardModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mPatientsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSchedulingModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCrmModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mClinicalModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAppController {/}:[39m[38;5;3m +10ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/, GET} route[39m[38;5;3m +3ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/health, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/auth}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/auth/me, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mDashboardController {/dashboard}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/dashboard/summary, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mPatientAppController {/patient-app}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/cockpit, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/daily-checkins, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/water-logs, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/meal-logs, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/workout-logs, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/sleep-logs, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patient-app/symptom-logs, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mPatientsController {/patients}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patients, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patients/:id, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patients, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/patients/:id/enrollments, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSchedulingController {/appointments}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/confirm, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/cancel, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/reschedule, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/check-in, PATCH} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/enqueue, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/start-encounter, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/appointments/:id/no-show, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mCrmController {/leads}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/kanban, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/catalog, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/:id/activities, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/:id/activities, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/:id/stage, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/:leadId/activities/:activityId, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/leads/:id/convert, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mClinicalController {/}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/clinical/tasks, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/clinical/tasks, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/encounters/:id, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/encounters/:id/autosave-section, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/encounters/:id/anamnesis, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/encounters/:id/soap-note, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/encounters/:id/complete, PATCH} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/encounters/:id/schedule-return, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSettingsController {/settings}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/settings/access, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/settings/invitations, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/settings/invitations/:id, DELETE} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 189724  - [39m21/04/2026, 16:32:03 [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +89ms[39m
+EmagrecePlus API disponivel em http://localhost:3101
+
+[api:smoke] Configurando sessao autenticada para validar rotas protegidas
+(node:189724) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+[api:smoke] Validando endpoints de leitura
+
+[api:smoke] Executando fluxo de escrita via HTTP
+
+[api:smoke] Validando endpoints de detalhe e evolucao clinica
+
+[api:smoke] Smoke concluido com sucesso
+
+[api:smoke] Limpando registros temporarios

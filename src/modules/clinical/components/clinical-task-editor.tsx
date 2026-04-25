@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { usePermissions } from "@/hooks/use-permissions";
 import { ClinicalTaskPriorityBadge } from "@/modules/clinical/components/clinical-task-priority-badge";
 import { ClinicalTaskStatusBadge } from "@/modules/clinical/components/clinical-task-status-badge";
 import { useCreateClinicalTask } from "@/modules/clinical/hooks/use-create-clinical-task";
@@ -51,14 +52,16 @@ export function ClinicalTaskEditor({
   patientId: string;
   items: EncounterDetailsResponse["tasks"];
 }) {
+  const { can } = usePermissions();
   const mutation = useCreateClinicalTask(encounterId);
   const [title, setTitle] = useState("");
   const [priority, setPriority] = useState<"LOW" | "MEDIUM" | "HIGH" | "URGENT">("MEDIUM");
   const [dueAt, setDueAt] = useState("");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const canWrite = can("clinical:write");
 
   async function handleCreateTask() {
-    if (!title.trim()) {
+    if (!title.trim() || !canWrite) {
       return;
     }
 
@@ -85,6 +88,7 @@ export function ClinicalTaskEditor({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Ex.: revisar adesao e retorno laboratorial"
+          disabled={!canWrite}
         />
         <select
           className="field-base"
@@ -92,18 +96,33 @@ export function ClinicalTaskEditor({
           onChange={(event) =>
             setPriority(event.target.value as "LOW" | "MEDIUM" | "HIGH" | "URGENT")
           }
+          disabled={!canWrite}
         >
           <option value="LOW">Baixa</option>
           <option value="MEDIUM">Media</option>
           <option value="HIGH">Alta</option>
           <option value="URGENT">Urgente</option>
         </select>
-        <Input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
-        <Button type="button" onClick={handleCreateTask} disabled={mutation.isPending || !title.trim()}>
+        <Input
+          type="datetime-local"
+          value={dueAt}
+          onChange={(event) => setDueAt(event.target.value)}
+          disabled={!canWrite}
+        />
+        <Button
+          type="button"
+          onClick={handleCreateTask}
+          disabled={!canWrite || mutation.isPending || !title.trim()}
+        >
           {mutation.isPending ? "Criando..." : "Nova tarefa"}
         </Button>
       </div>
 
+      {!canWrite ? (
+        <p className="mb-4 text-sm text-slate-500">
+          Sua sessao pode acompanhar as tarefas deste atendimento, mas nao criar novas pendencias.
+        </p>
+      ) : null}
       {mutation.isError ? <p className="mb-4 text-sm text-red-600">Erro ao criar tarefa clinica.</p> : null}
       {successMessage ? <p className="mb-4 text-sm text-emerald-700">{successMessage}</p> : null}
 
@@ -116,7 +135,7 @@ export function ClinicalTaskEditor({
             <div>
               <p className="font-medium text-slate-950">{item.title}</p>
               <p className="text-xs text-slate-500">
-                Status: {mapStatusLabel(item.status)} · Vencimento: {formatDueDate(item.dueAt)}
+                Status: {mapStatusLabel(item.status)} - Vencimento: {formatDueDate(item.dueAt)}
               </p>
             </div>
             <div className="flex items-center gap-2">

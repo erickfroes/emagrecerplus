@@ -71,7 +71,7 @@ export function LoginPageClient() {
         });
 
         startTransition(() => {
-          router.push("/dashboard");
+          router.push(appSession.user.role === "patient" ? "/app" : "/dashboard");
         });
         return;
       } catch (error) {

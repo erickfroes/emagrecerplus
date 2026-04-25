@@ -1,13 +1,21 @@
 {
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:stop": "node scripts/dev-stop.mjs",
+    "web:dev": "next dev",
+    "api:dev": "node scripts/api-dev.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "api:build": "node scripts/fix-generated-prisma-imports.mjs && tsc -p apps/api/tsconfig.json",
     "api:start": "node apps/api/dist/apps/api/src/main.js",
     "api:smoke": "npm run api:build && npx tsx scripts/api-smoke.ts",
+    "auth:backfill": "tsx scripts/backfill-auth-projection.ts",
+    "runtime:backfill": "tsx scripts/backfill-runtime-foundation.ts",
+    "runtime:seed": "tsx scripts/seed-runtime-homologation.ts",
+    "runtime:seed:direct": "tsx scripts/seed-runtime-direct-fixtures.ts",
+    "runtime:seed:hybrid": "tsx scripts/seed-runtime-homologation.ts --with-legacy-bridge",
     "frontend:auth-smoke": "npm run api:build && npm run build && npx tsx scripts/frontend-auth-smoke.ts",
     "api:typecheck": "tsc -p apps/api/tsconfig.json --noEmit",
     "prisma:generate": "prisma generate && node scripts/fix-generated-prisma-imports.mjs",
@@ -50,8 +58,10 @@
     "@types/node": "^24.9.1",
     "postcss": "^8.5.6",
     "prisma": "^7.7.0",
+    "supabase": "^2.93.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3"
-  }
+  },
+  "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319"
 }

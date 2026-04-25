@@ -1,16 +1,16 @@
 "use client";
 
-import { Bell, CalendarClock, ChevronDown, LogOut, Search } from "lucide-react";
+import { Bell, CalendarClock, LogOut, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useCurrentUnit } from "@/hooks/use-current-unit";
-import { Button } from "@/components/ui/button";
 import { env } from "@/lib/env";
 
 export function Header() {
   const router = useRouter();
   const { user, logout } = useAuth();
-  const { currentUnit } = useCurrentUnit();
+  const { currentUnit, units, setCurrentUnit } = useCurrentUnit();
 
   async function handleLogout() {
     if (env.authMode === "real") {
@@ -35,20 +35,35 @@ export function Header() {
       <div className="flex items-center gap-3 md:gap-4">
         <button className="hidden items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 md:inline-flex">
           <CalendarClock className="h-4 w-4" />
-          Operação do dia
+          Operacao do dia
         </button>
 
         <button className="rounded-2xl border border-border bg-surface p-2 text-slate-600 hover:bg-slate-50">
           <Bell className="h-4 w-4" />
         </button>
 
-        <button className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2 hover:bg-slate-50">
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2">
           <div className="text-left">
-            <p className="text-xs text-slate-500">{currentUnit?.name ?? "Sem unidade"}</p>
-            <p className="text-sm font-medium text-slate-900">{user?.name ?? "Sem sessão"}</p>
+            <p className="text-xs text-slate-500">Unidade ativa</p>
+            <select
+              aria-label="Selecionar unidade atual"
+              className="bg-transparent text-sm font-medium text-slate-900 focus:outline-none"
+              onChange={(event) => setCurrentUnit(event.target.value)}
+              value={currentUnit?.id ?? ""}
+            >
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
           </div>
-          <ChevronDown className="h-4 w-4 text-slate-500" />
-        </button>
+
+          <div className="hidden border-l border-border pl-3 text-left md:block">
+            <p className="text-xs text-slate-500">{currentUnit?.city ?? "Sem cidade"}</p>
+            <p className="text-sm font-medium text-slate-900">{user?.name ?? "Sem sessao"}</p>
+          </div>
+        </div>
 
         <Button size="sm" variant="secondary" onClick={handleLogout}>
           <LogOut className="h-4 w-4" />

@@ -2,6 +2,8 @@
 
 import { useParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PatientAgendaTab } from "@/modules/patients/components/patient-agenda-tab";
 import { PatientCarePlanTab } from "@/modules/patients/components/patient-care-plan-tab";
@@ -16,7 +18,7 @@ import { usePatientDetails } from "@/modules/patients/hooks/use-patient-details"
 export default function PatientDetailPage() {
   const params = useParams<{ id: string }>();
   const patientId = params.id;
-  const { data, isLoading, isError } = usePatientDetails(patientId);
+  const { data, isLoading, isError, refetch } = usePatientDetails(patientId);
 
   return (
     <div className="space-y-6">
@@ -29,7 +31,20 @@ export default function PatientDetailPage() {
         </div>
       ) : null}
 
-      {isError ? <p className="text-sm text-red-600">Erro ao carregar paciente.</p> : null}
+      {isError ? (
+        <EmptyState
+          title="Nao foi possivel abrir a ficha do paciente"
+          description="Confira se o cadastro ainda existe nesta sessao e tente novamente."
+          action={<Button onClick={() => void refetch()}>Tentar novamente</Button>}
+        />
+      ) : null}
+
+      {!isLoading && !isError && !data ? (
+        <EmptyState
+          title="Paciente nao encontrado"
+          description="A ficha procurada nao esta disponivel para a sua sessao atual."
+        />
+      ) : null}
 
       {data ? (
         <>
@@ -47,7 +62,13 @@ export default function PatientDetailPage() {
               {
                 id: "summary",
                 label: "Resumo",
-                content: <PatientSummaryTab summary={data.summary} />,
+                content: (
+                  <PatientSummaryTab
+                    patientId={data.id}
+                    summary={data.summary}
+                    commercialContext={data.commercialContext}
+                  />
+                ),
               },
               {
                 id: "agenda",

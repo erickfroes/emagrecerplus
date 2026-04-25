@@ -23,7 +23,8 @@ export type AuthRole =
   | "reception"
   | "sales"
   | "nursing"
-  | "financial";
+  | "financial"
+  | "patient";
 
 export type AuthUnit = {
   id: EntityId;
@@ -39,9 +40,11 @@ export type AuthUser = {
 };
 
 export type AuthSession = {
+  tenantId: EntityId;
   user: AuthUser;
   units: AuthUnit[];
   currentUnitId: EntityId;
+  accessibleUnitIds: EntityId[];
   permissions: PermissionKey[];
 };
 

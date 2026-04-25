@@ -27,6 +27,7 @@ const prisma = new PrismaClient({
 type CleanupState = {
   localUserId?: string;
   supabaseUserId?: string;
+  invitedSupabaseUserId?: string;
 };
 
 const cleanupState: CleanupState = {};
@@ -173,6 +174,15 @@ function assertRedirectLocation(
   assert.equal(resolvedLocation.pathname, expectedPath, `${message} Location recebida: ${location}`);
 }
 
+async function fetchJson<T = unknown>(url: string, init?: RequestInit, expectedStatus = 200) {
+  const response = await fetch(url, init);
+  const text = await response.text();
+
+  assert.equal(response.status, expectedStatus, `${init?.method ?? "GET"} ${url} retornou ${response.status}: ${text}`);
+
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
 async function cleanup() {
   logStep("Limpando usuarios temporarios");
 
@@ -190,6 +200,9 @@ async function cleanup() {
     });
 
     await adminClient.auth.admin.deleteUser(cleanupState.supabaseUserId).catch(() => undefined);
+    if (cleanupState.invitedSupabaseUserId) {
+      await adminClient.auth.admin.deleteUser(cleanupState.invitedSupabaseUserId).catch(() => undefined);
+    }
   }
 }
 
@@ -435,6 +448,125 @@ async function main() {
       validLogin,
       "/dashboard",
       "GET /login autenticado nao redirecionou para /dashboard.",
+      frontendBaseUrl
+    );
+
+    logStep("Validando aceite de convite com primeiro login do convidado");
+
+    const adminAccessToken = signInAfterClearResult.data.session?.access_token;
+    assert(adminAccessToken, "O usuario admin do smoke nao retornou access token apos o segundo sign-in.");
+
+    const settingsAccess = await fetchJson<{
+      units: Array<{ id: string }>;
+    }>(`${apiBaseUrl}/settings/access`, {
+      headers: {
+        Authorization: `Bearer ${adminAccessToken}`,
+      },
+    });
+
+    assert(settingsAccess.units.length > 0, "settings/access nao retornou unidades para emitir convite no smoke.");
+
+    const invitedEmail = `smoke.frontend.invited.${Date.now()}@emagreceplus.local`;
+    const invitedPassword = `TmpFrontInvite!${Date.now()}Ab`;
+
+    await fetchJson<{ id: string }>(
+      `${apiBaseUrl}/settings/invitations`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${adminAccessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: invitedEmail,
+          roleCode: "assistant",
+          unitIds: [settingsAccess.units[0].id],
+          expiresInDays: 7,
+          note: "Frontend auth smoke invitation",
+        }),
+      },
+      201
+    );
+
+    const invitedCreateUserResult = await adminClient.auth.admin.createUser({
+      email: invitedEmail,
+      password: invitedPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: "Frontend Invited Smoke User",
+      },
+    });
+
+    assert(
+      !invitedCreateUserResult.error,
+      `Falha ao criar usuario convidado do frontend smoke: ${invitedCreateUserResult.error?.message}`
+    );
+    assert(invitedCreateUserResult.data.user?.id, "Supabase nao retornou o id do convidado do frontend smoke.");
+    cleanupState.invitedSupabaseUserId = invitedCreateUserResult.data.user.id;
+
+    const invitedCookieJar = new Map<string, string>();
+    const invitedBrowserClient = createBrowserClient(supabaseUrl, publishableKey, {
+      cookies: {
+        getAll() {
+          return Array.from(invitedCookieJar.entries()).map(([name, value]) => ({
+            name,
+            value,
+          }));
+        },
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) {
+          for (const { name, value } of cookiesToSet) {
+            if (value) {
+              invitedCookieJar.set(name, value);
+              continue;
+            }
+
+            invitedCookieJar.delete(name);
+          }
+        },
+      },
+      isSingleton: false,
+    });
+
+    const invitedSignInResult = await invitedBrowserClient.auth.signInWithPassword({
+      email: invitedEmail,
+      password: invitedPassword,
+    });
+
+    assert(
+      !invitedSignInResult.error,
+      `Falha no sign-in do usuario convidado do frontend smoke: ${invitedSignInResult.error?.message}`
+    );
+    assert(invitedCookieJar.size > 0, "Os cookies do usuario convidado nao foram persistidos.");
+
+    const invitedDashboard = await fetch(`${frontendBaseUrl}/dashboard`, {
+      headers: {
+        cookie: cookieHeader(invitedCookieJar),
+      },
+      redirect: "manual",
+    });
+
+    assert.equal(
+      invitedDashboard.status,
+      200,
+      `GET /dashboard do usuario convidado retornou ${invitedDashboard.status}.`
+    );
+
+    const invitedLogin = await fetch(`${frontendBaseUrl}/login`, {
+      headers: {
+        cookie: cookieHeader(invitedCookieJar),
+      },
+      redirect: "manual",
+    });
+
+    assert.equal(
+      invitedLogin.status,
+      307,
+      `GET /login com usuario convidado autenticado deveria redirecionar, mas retornou ${invitedLogin.status}.`
+    );
+    assertRedirectLocation(
+      invitedLogin,
+      "/dashboard",
+      "GET /login do usuario convidado nao redirecionou para /dashboard.",
       frontendBaseUrl
     );
 

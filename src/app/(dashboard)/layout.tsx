@@ -18,5 +18,9 @@ export default async function DashboardLayout({
     redirect("/auth/sign-out?next=/login");
   }
 
+  if (authState.authMode === "real" && authState.appSession?.user.role === "patient") {
+    redirect("/app");
+  }
+
   return <AdminShell>{children}</AdminShell>;
 }

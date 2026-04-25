@@ -26,13 +26,24 @@ export async function http<T>(
   }
 ): Promise<T> {
   const url = path.startsWith("http") ? path : `${env.apiBaseUrl}${path}`;
-  const token = options?.token ?? useAuthStore.getState().token;
+  const authState = useAuthStore.getState();
+  const token = options?.token ?? authState.token;
+  const session = authState.session;
+  const normalizedCurrentUnitId = authState.session?.currentUnitId?.trim() || null;
+  const canUseRealAuthToken = env.authMode === "real" && Boolean(token) && token !== "mock-token";
+  const canForwardCurrentUnitId =
+    canUseRealAuthToken && session
+      ? hasValidCurrentUnitSelection(session, normalizedCurrentUnitId)
+      : false;
 
   const response = await fetch(url, {
     method: options?.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(canUseRealAuthToken ? { Authorization: `Bearer ${token}` } : {}),
+      ...(canForwardCurrentUnitId && normalizedCurrentUnitId
+        ? { "x-current-unit-id": normalizedCurrentUnitId }
+        : {}),
       ...(options?.headers ?? {}),
     },
     body: options?.body ? JSON.stringify(options.body) : undefined,
@@ -59,4 +70,22 @@ function safeJsonParse(value: string) {
   } catch {
     return value;
   }
+}
+
+function hasValidCurrentUnitSelection(
+  session: NonNullable<ReturnType<typeof useAuthStore.getState>["session"]>,
+  currentUnitId: string | null
+) {
+  if (session.user.role === "patient") {
+    return false;
+  }
+
+  if (!currentUnitId) {
+    return false;
+  }
+
+  return (
+    session.accessibleUnitIds.includes(currentUnitId) &&
+    session.units.some((unit) => unit.id === currentUnitId)
+  );
 }

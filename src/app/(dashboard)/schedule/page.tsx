@@ -2,6 +2,8 @@
 
 import { useDeferredValue, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { usePermissions } from "@/hooks/use-permissions";
 import { PageHeader } from "@/components/layout/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreateAppointmentModal } from "@/modules/scheduling/components/create-appointment-modal";
@@ -18,6 +20,7 @@ export default function SchedulePage() {
   const [isCreateAppointmentOpen, setIsCreateAppointmentOpen] = useState(false);
   const deferredUnit = useDeferredValue(unit);
   const deferredProfessional = useDeferredValue(professional);
+  const { can } = usePermissions();
   const { data, isLoading, isError } = useAppointments({
     date,
     status,
@@ -31,9 +34,11 @@ export default function SchedulePage() {
         title="Agenda"
         description="Visualize e opere os atendimentos da clinica."
         actions={
-          <Button onClick={() => setIsCreateAppointmentOpen(true)}>
-            Novo agendamento
-          </Button>
+          can("schedule:write") ? (
+            <Button onClick={() => setIsCreateAppointmentOpen(true)}>
+              Novo agendamento
+            </Button>
+          ) : null
         }
       />
 
@@ -58,7 +63,20 @@ export default function SchedulePage() {
 
       {isLoading ? <Skeleton className="h-72" /> : null}
       {isError ? <p className="text-sm text-red-600">Erro ao carregar agenda.</p> : null}
-      {data ? <ScheduleCalendar currentView={currentView} items={data.items} /> : null}
+      {data && data.items.length === 0 ? (
+        <EmptyState
+          title="Agenda sem atendimentos"
+          description="Nao ha agendamentos para os filtros selecionados nesta unidade."
+          action={
+            can("schedule:write") ? (
+              <Button onClick={() => setIsCreateAppointmentOpen(true)}>Novo agendamento</Button>
+            ) : undefined
+          }
+        />
+      ) : null}
+      {data && data.items.length > 0 ? (
+        <ScheduleCalendar currentView={currentView} items={data.items} />
+      ) : null}
     </div>
   );
 }

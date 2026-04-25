@@ -6,12 +6,14 @@ export function WeeklyConsistencyCard({
   workoutCount,
   sleepCount,
   symptomCount,
+  checkinCount,
 }: {
   waterCount: number;
   mealCount: number;
   workoutCount: number;
   sleepCount: number;
   symptomCount: number;
+  checkinCount: number;
 }) {
   return (
     <Card>
@@ -33,7 +35,11 @@ export function WeeklyConsistencyCard({
           <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Sono</p>
           <p className="mt-2 text-2xl font-semibold text-slate-950">{sleepCount}</p>
         </div>
-        <div className="rounded-2xl border border-slate-100 px-3 py-3 sm:col-span-2">
+        <div className="rounded-2xl border border-slate-100 px-3 py-3">
+          <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Check-ins</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-950">{checkinCount}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-100 px-3 py-3">
           <p className="text-xs uppercase tracking-[0.12em] text-slate-400">Sintomas registrados</p>
           <p className="mt-2 text-2xl font-semibold text-slate-950">{symptomCount}</p>
         </div>
