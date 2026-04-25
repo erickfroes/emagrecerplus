@@ -160,6 +160,14 @@ export class ClinicalController {
     );
   }
 
+  @Get("documents/:id")
+  getDocumentDetail(
+    @Param("id") id: string,
+    @AppContext() context?: AppRequestContext
+  ) {
+    return this.clinicalService.getDocumentDetail(id, context);
+  }
+
   @Get("documents/:id/access-links")
   getDocumentAccessLinks(
     @Param("id") id: string,
