@@ -203,6 +203,143 @@ export type RuntimeAccessiblePatientDocumentList = {
   offset: number;
 };
 
+export type RuntimeDocumentOperationalDetail = {
+  id: string;
+  runtimeId: string;
+  documentType: string;
+  status: string;
+  title: string;
+  summary: string | null;
+  documentNumber: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  signedAt: string | null;
+  patient: {
+    id: string;
+    runtimeId: string;
+    name: string;
+  } | null;
+  encounter: {
+    id: string;
+    runtimeId: string;
+    encounterType: string;
+    status: string;
+    openedAt: string | null;
+    closedAt: string | null;
+  } | null;
+  template: {
+    id: string;
+    title: string;
+    templateKind: string;
+    status: string;
+  } | null;
+  author: {
+    runtimeId: string;
+    name: string;
+    email: string | null;
+  } | null;
+  professional: {
+    id: string;
+    runtimeId: string;
+    name: string;
+    professionalType: string;
+    licenseNumber: string | null;
+  } | null;
+  currentVersion: {
+    id: string;
+    runtimeId: string;
+    versionNumber: number;
+    status: string;
+    title: string;
+    summary: string | null;
+    issuedAt: string | null;
+    signedAt: string | null;
+    checksum: string | null;
+    hasStorageObject: boolean;
+  } | null;
+  printableArtifacts: Array<{
+    id: string;
+    runtimeId: string;
+    artifactKind: string;
+    renderStatus: string;
+    renderedAt: string | null;
+    failureReason: string | null;
+    checksum: string | null;
+    hasStorageObject: boolean;
+  }>;
+  signatureRequests: Array<{
+    id: string;
+    runtimeId: string;
+    signerType: string;
+    signerName: string | null;
+    signerEmail: string | null;
+    providerCode: string;
+    externalRequestId: string | null;
+    requestStatus: string;
+    requestedAt: string | null;
+    expiresAt: string | null;
+    completedAt: string | null;
+    latestDispatch: {
+      id: string;
+      providerCode: string;
+      dispatchStatus: string;
+      externalRequestId: string | null;
+      attemptedAt: string | null;
+      completedAt: string | null;
+      errorMessage: string | null;
+    } | null;
+  }>;
+  signatureEvents: Array<{
+    id: string;
+    runtimeId: string;
+    signatureRequestId: string | null;
+    eventType: string;
+    source: string;
+    externalEventId: string | null;
+    eventAt: string | null;
+    createdAt: string | null;
+  }>;
+  dispatchEvents: Array<{
+    id: string;
+    signatureRequestId: string | null;
+    providerCode: string;
+    dispatchStatus: string;
+    externalRequestId: string | null;
+    attemptedAt: string | null;
+    completedAt: string | null;
+    errorMessage: string | null;
+  }>;
+  prescriptions: Array<{
+    id: string;
+    runtimeId: string;
+    prescriptionType: string;
+    summary: string | null;
+    issuedAt: string | null;
+  }>;
+  accessEvents: Array<{
+    id: string;
+    runtimeId: string;
+    accessAction: string;
+    accessStatus: string;
+    targetKind: string;
+    artifactKind: string | null;
+    signedUrlExpiresAt: string | null;
+    createdAt: string | null;
+    actor: {
+      runtimeId: string;
+      name: string;
+      email: string | null;
+    } | null;
+  }>;
+};
+
+export type GetRuntimeDocumentOperationalDetailInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  accessEventLimit?: number | null;
+};
+
 export type PrepareRuntimeDocumentAccessInput = {
   legacyTenantId: string;
   legacyUnitId?: string | null;
@@ -452,6 +589,187 @@ function parseAccessiblePatientDocumentList(
   };
 }
 
+function parseRuntimeDocumentOperationalDetail(value: unknown): RuntimeDocumentOperationalDetail {
+  if (!isRecord(value)) {
+    throw new Error("RPC get_patient_document_operational_detail retornou payload invalido.");
+  }
+
+  const id = String(value.id ?? "");
+  if (!id) {
+    throw new Error("RPC get_patient_document_operational_detail nao retornou id do documento.");
+  }
+
+  const patient = isRecord(value.patient)
+    ? {
+        id: String(value.patient.id ?? ""),
+        runtimeId: String(value.patient.runtimeId ?? ""),
+        name: String(value.patient.name ?? ""),
+      }
+    : null;
+
+  const encounter = isRecord(value.encounter)
+    ? {
+        id: String(value.encounter.id ?? ""),
+        runtimeId: String(value.encounter.runtimeId ?? ""),
+        encounterType: String(value.encounter.encounterType ?? "other"),
+        status: String(value.encounter.status ?? "open"),
+        openedAt: asStringOrNull(value.encounter.openedAt),
+        closedAt: asStringOrNull(value.encounter.closedAt),
+      }
+    : null;
+
+  const template = isRecord(value.template)
+    ? {
+        id: String(value.template.id ?? ""),
+        title: String(value.template.title ?? ""),
+        templateKind: String(value.template.templateKind ?? "custom"),
+        status: String(value.template.status ?? "draft"),
+      }
+    : null;
+
+  const author = isRecord(value.author)
+    ? {
+        runtimeId: String(value.author.runtimeId ?? ""),
+        name: String(value.author.name ?? ""),
+        email: asStringOrNull(value.author.email),
+      }
+    : null;
+
+  const professional = isRecord(value.professional)
+    ? {
+        id: String(value.professional.id ?? ""),
+        runtimeId: String(value.professional.runtimeId ?? ""),
+        name: String(value.professional.name ?? ""),
+        professionalType: String(value.professional.professionalType ?? "other"),
+        licenseNumber: asStringOrNull(value.professional.licenseNumber),
+      }
+    : null;
+
+  const currentVersion = isRecord(value.currentVersion)
+    ? {
+        id: String(value.currentVersion.id ?? ""),
+        runtimeId: String(value.currentVersion.runtimeId ?? ""),
+        versionNumber: Number(value.currentVersion.versionNumber ?? 0),
+        status: String(value.currentVersion.status ?? "draft"),
+        title: String(value.currentVersion.title ?? ""),
+        summary: asStringOrNull(value.currentVersion.summary),
+        issuedAt: asStringOrNull(value.currentVersion.issuedAt),
+        signedAt: asStringOrNull(value.currentVersion.signedAt),
+        checksum: asStringOrNull(value.currentVersion.checksum),
+        hasStorageObject: asBoolean(value.currentVersion.hasStorageObject),
+      }
+    : null;
+
+  return {
+    id,
+    runtimeId: String(value.runtimeId ?? ""),
+    documentType: String(value.documentType ?? "custom"),
+    status: String(value.status ?? "draft"),
+    title: String(value.title ?? ""),
+    summary: asStringOrNull(value.summary),
+    documentNumber: asStringOrNull(value.documentNumber),
+    issuedAt: asStringOrNull(value.issuedAt),
+    expiresAt: asStringOrNull(value.expiresAt),
+    signedAt: asStringOrNull(value.signedAt),
+    patient,
+    encounter,
+    template,
+    author,
+    professional,
+    currentVersion,
+    printableArtifacts: Array.isArray(value.printableArtifacts)
+      ? value.printableArtifacts.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          artifactKind: String(item.artifactKind ?? "preview"),
+          renderStatus: String(item.renderStatus ?? "pending"),
+          renderedAt: asStringOrNull(item.renderedAt),
+          failureReason: asStringOrNull(item.failureReason),
+          checksum: asStringOrNull(item.checksum),
+          hasStorageObject: asBoolean(item.hasStorageObject),
+        }))
+      : [],
+    signatureRequests: Array.isArray(value.signatureRequests)
+      ? value.signatureRequests.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          signerType: String(item.signerType ?? "patient"),
+          signerName: asStringOrNull(item.signerName),
+          signerEmail: asStringOrNull(item.signerEmail),
+          providerCode: String(item.providerCode ?? "mock"),
+          externalRequestId: asStringOrNull(item.externalRequestId),
+          requestStatus: String(item.requestStatus ?? "pending"),
+          requestedAt: asStringOrNull(item.requestedAt),
+          expiresAt: asStringOrNull(item.expiresAt),
+          completedAt: asStringOrNull(item.completedAt),
+          latestDispatch: isRecord(item.latestDispatch)
+            ? {
+                id: String(item.latestDispatch.id ?? ""),
+                providerCode: String(item.latestDispatch.providerCode ?? "mock"),
+                dispatchStatus: String(item.latestDispatch.dispatchStatus ?? "pending"),
+                externalRequestId: asStringOrNull(item.latestDispatch.externalRequestId),
+                attemptedAt: asStringOrNull(item.latestDispatch.attemptedAt),
+                completedAt: asStringOrNull(item.latestDispatch.completedAt),
+                errorMessage: asStringOrNull(item.latestDispatch.errorMessage),
+              }
+            : null,
+        }))
+      : [],
+    signatureEvents: Array.isArray(value.signatureEvents)
+      ? value.signatureEvents.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          signatureRequestId: asStringOrNull(item.signatureRequestId),
+          eventType: String(item.eventType ?? "unknown"),
+          source: String(item.source ?? "internal"),
+          externalEventId: asStringOrNull(item.externalEventId),
+          eventAt: asStringOrNull(item.eventAt),
+          createdAt: asStringOrNull(item.createdAt),
+        }))
+      : [],
+    dispatchEvents: Array.isArray(value.dispatchEvents)
+      ? value.dispatchEvents.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          signatureRequestId: asStringOrNull(item.signatureRequestId),
+          providerCode: String(item.providerCode ?? "mock"),
+          dispatchStatus: String(item.dispatchStatus ?? "pending"),
+          externalRequestId: asStringOrNull(item.externalRequestId),
+          attemptedAt: asStringOrNull(item.attemptedAt),
+          completedAt: asStringOrNull(item.completedAt),
+          errorMessage: asStringOrNull(item.errorMessage),
+        }))
+      : [],
+    prescriptions: Array.isArray(value.prescriptions)
+      ? value.prescriptions.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          prescriptionType: String(item.prescriptionType ?? "other"),
+          summary: asStringOrNull(item.summary),
+          issuedAt: asStringOrNull(item.issuedAt),
+        }))
+      : [],
+    accessEvents: Array.isArray(value.accessEvents)
+      ? value.accessEvents.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          accessAction: String(item.accessAction ?? "open"),
+          accessStatus: String(item.accessStatus ?? "granted"),
+          targetKind: String(item.targetKind ?? "document_version"),
+          artifactKind: asStringOrNull(item.artifactKind),
+          signedUrlExpiresAt: asStringOrNull(item.signedUrlExpiresAt),
+          createdAt: asStringOrNull(item.createdAt),
+          actor: isRecord(item.actor)
+            ? {
+                runtimeId: String(item.actor.runtimeId ?? ""),
+                name: String(item.actor.name ?? ""),
+                email: asStringOrNull(item.actor.email),
+              }
+            : null,
+        }))
+      : [],
+  };
+}
+
 function parseRuntimeDocumentAccessTarget(value: unknown): RuntimeDocumentAccessTarget {
   if (!isRecord(value)) {
     throw new Error("RPC prepare_patient_document_access nao retornou payload valido.");
@@ -527,6 +845,23 @@ export async function listRuntimeAccessiblePatientDocuments(
   }
 
   return parseAccessiblePatientDocumentList(data);
+}
+
+export async function getRuntimeDocumentOperationalDetail(
+  params: GetRuntimeDocumentOperationalDetailInput
+): Promise<RuntimeDocumentOperationalDetail> {
+  const { data, error } = await supabaseAdmin.rpc("get_patient_document_operational_detail", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_access_event_limit: params.accessEventLimit ?? 20,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC get_patient_document_operational_detail: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentOperationalDetail(data);
 }
 
 export async function prepareRuntimeDocumentAccess(

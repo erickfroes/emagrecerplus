@@ -348,6 +348,15 @@ async function assertDirectDocumentBrokerRpcDenied(params: {
   });
 
   assertDirectDocumentBrokerRpcRejected(`${params.label}: prepare_patient_document_access`, prepareResult);
+
+  const detailResult = await params.client.rpc("get_patient_document_operational_detail", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_legacy_unit_id: params.legacyUnitId,
+    p_access_event_limit: 5,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(`${params.label}: get_patient_document_operational_detail`, detailResult);
 }
 
 async function waitForHealth() {
@@ -3558,6 +3567,53 @@ async function main() {
       400
     );
 
+    const documentDetail = await requestJson<{
+      id: string;
+      title: string;
+      documentType: string;
+      status: string;
+      patient?: { id?: string; name?: string } | null;
+      encounter?: { id?: string; status?: string } | null;
+      currentVersion?: {
+        id: string;
+        versionNumber: number;
+        hasStorageObject?: boolean;
+        storageObjectPath?: string;
+      } | null;
+      printableArtifacts?: Array<{
+        id: string;
+        artifactKind: string;
+        renderStatus: string;
+        hasStorageObject?: boolean;
+        storageObjectPath?: string;
+      }>;
+      signatureRequests?: unknown[];
+      signatureEvents?: unknown[];
+      dispatchEvents?: unknown[];
+      accessEvents?: unknown[];
+      storageObjectPath?: string;
+    }>(`/documents/${createdDocument.id}`);
+
+    assert.equal(
+      documentDetail.id,
+      createdDocument.id,
+      "GET /documents/:id retornou documento inesperado."
+    );
+    assert.equal(
+      documentDetail.documentType,
+      createdDocument.documentType,
+      "GET /documents/:id nao refletiu o tipo documental."
+    );
+    assert(Array.isArray(documentDetail.printableArtifacts), "GET /documents/:id nao retornou printableArtifacts.");
+    assert(Array.isArray(documentDetail.signatureRequests), "GET /documents/:id nao retornou signatureRequests.");
+    assert(Array.isArray(documentDetail.signatureEvents), "GET /documents/:id nao retornou signatureEvents.");
+    assert(Array.isArray(documentDetail.dispatchEvents), "GET /documents/:id nao retornou dispatchEvents.");
+    assert(Array.isArray(documentDetail.accessEvents), "GET /documents/:id nao retornou accessEvents.");
+    assert(
+      !JSON.stringify(documentDetail).includes("storageObjectPath"),
+      "GET /documents/:id nao deve expor storageObjectPath."
+    );
+
     if (isRealAuthEnabled()) {
       const listedDocument = listedDocuments.items.find((item) => item.id === createdDocument.id);
       assert(listedDocument, "GET /documents nao retornou o documento emitido fora do encounter.");
@@ -3571,6 +3627,16 @@ async function main() {
           (artifact) => artifact.artifactKind === "preview" && artifact.hasStorageObject
         ),
         "GET /documents nao refletiu o artefato armazenado para acesso seguro."
+      );
+      assert(
+        documentDetail.patient?.id === createdPatient.id,
+        "GET /documents/:id nao retornou o paciente esperado."
+      );
+      assert(
+        documentDetail.printableArtifacts?.some(
+          (artifact) => artifact.artifactKind === "preview" && artifact.hasStorageObject
+        ),
+        "GET /documents/:id nao refletiu o artefato armazenado."
       );
 
       const issuedFrom = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -3648,6 +3714,31 @@ async function main() {
     }
 
     if (isRealAuthEnabled()) {
+      const documentDetailAfterAccess = await requestJson<{
+        accessEvents?: Array<{
+          accessAction: string;
+          accessStatus: string;
+          storageObjectPath?: string;
+        }>;
+      }>(`/documents/${createdDocument.id}`);
+
+      assert(
+        documentDetailAfterAccess.accessEvents?.some(
+          (event) => event.accessAction === "open" && event.accessStatus === "granted"
+        ),
+        "GET /documents/:id nao retornou auditoria de abertura apos gerar signed URL."
+      );
+      assert(
+        documentDetailAfterAccess.accessEvents?.some(
+          (event) => event.accessAction === "download" && event.accessStatus === "granted"
+        ),
+        "GET /documents/:id nao retornou auditoria de download apos gerar signed URL."
+      );
+      assert(
+        !JSON.stringify(documentDetailAfterAccess).includes("storageObjectPath"),
+        "GET /documents/:id nao deve expor storageObjectPath nos eventos de auditoria."
+      );
+
       const previewArtifact = documentWithArtifact.printableArtifacts?.find(
         (artifact) => artifact.artifactKind === "preview"
       );
@@ -3730,6 +3821,39 @@ async function main() {
     );
 
     if (isRealAuthEnabled()) {
+      const documentDetailAfterSignatureRequest = await requestJson<{
+        signatureRequests?: Array<{
+          id: string;
+          requestStatus: string;
+          providerCode?: string | null;
+          latestDispatch?: {
+            dispatchStatus?: string | null;
+            providerCode?: string | null;
+          } | null;
+        }>;
+        dispatchEvents?: Array<{
+          dispatchStatus: string;
+          providerCode?: string | null;
+        }>;
+      }>(`/documents/${createdDocument.id}`);
+
+      assert(
+        documentDetailAfterSignatureRequest.signatureRequests?.some(
+          (request) =>
+            request.id === createdSignatureRequest?.id &&
+            request.requestStatus === "sent" &&
+            request.providerCode === "mock" &&
+            request.latestDispatch?.dispatchStatus === "sent"
+        ),
+        "GET /documents/:id nao refletiu solicitacao de assinatura e ultimo dispatch."
+      );
+      assert(
+        documentDetailAfterSignatureRequest.dispatchEvents?.some(
+          (event) => event.dispatchStatus === "sent" && event.providerCode === "mock"
+        ),
+        "GET /documents/:id nao retornou evento de dispatch operacional."
+      );
+
       const listedDocumentsBySentSignature = await requestJson<{
         items: Array<{ id: string }>;
       }>(
@@ -3861,6 +3985,45 @@ async function main() {
       assert(
         signedDocument?.printableArtifacts?.some((artifact) => artifact.artifactKind === "preview"),
         "GET /encounters/:id deveria preservar o artefato imprimivel criado antes da assinatura."
+      );
+
+      const documentDetailAfterSignature = await requestJson<{
+        status: string;
+        signedAt?: string | null;
+        signatureRequests?: Array<{
+          id: string;
+          requestStatus: string;
+          completedAt?: string | null;
+        }>;
+        signatureEvents?: Array<{
+          eventType: string;
+          source?: string | null;
+        }>;
+      }>(`/documents/${createdDocument.id}`);
+
+      assert.equal(
+        documentDetailAfterSignature.status,
+        "signed",
+        "GET /documents/:id deveria refletir o documento assinado."
+      );
+      assert(
+        Boolean(documentDetailAfterSignature.signedAt),
+        "GET /documents/:id deveria refletir signedAt."
+      );
+      assert(
+        documentDetailAfterSignature.signatureRequests?.some(
+          (request) =>
+            request.id === createdSignatureRequest?.id &&
+            request.requestStatus === "signed" &&
+            Boolean(request.completedAt)
+        ),
+        "GET /documents/:id nao refletiu a assinatura concluida."
+      );
+      assert(
+        documentDetailAfterSignature.signatureEvents?.some(
+          (event) => event.eventType === "signed"
+        ),
+        "GET /documents/:id nao retornou evento de assinatura do webhook."
       );
 
       const listedDocumentsBySignedSignature = await requestJson<{

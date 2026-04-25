@@ -23,6 +23,7 @@ import {
   createRuntimeDocumentPrintableArtifact,
   createRuntimeDocumentSignatureRequest,
   dispatchRuntimeDocumentSignatureRequest,
+  getRuntimeDocumentOperationalDetail,
   getRuntimeEncounterDocumentSnapshot,
   issueRuntimeEncounterDocument,
   listRuntimeAccessiblePatientDocuments,
@@ -30,6 +31,7 @@ import {
   prepareRuntimeDocumentAccess,
   recordRuntimeDocumentAccessEvent,
   type RuntimeDocumentAccessTarget,
+  type RuntimeDocumentOperationalDetail,
   type RuntimeDocumentTemplate,
 } from "../../common/runtime/runtime-document-writes.ts";
 import { recordRuntimePrescription } from "../../common/runtime/runtime-prescription-writes.ts";
@@ -1051,6 +1053,34 @@ export class ClinicalService {
     } catch (error) {
       console.error("[runtime:read] Falha ao listar documentos acessiveis.", error);
       throw new BadRequestException("Nao foi possivel listar os documentos acessiveis.");
+    }
+  }
+
+  async getDocumentDetail(documentId: string, context?: AppRequestContext) {
+    const tenantId = await resolveTenantIdForRequest(this.prisma, context);
+    const currentUnitId = await resolveUnitIdForRequest(
+      this.prisma,
+      context,
+      process.env.DEFAULT_UNIT_CODE
+    );
+
+    if (!this.isRealAuthEnabled()) {
+      return buildMockDocumentOperationalDetail(documentId);
+    }
+
+    try {
+      return await getRuntimeDocumentOperationalDetail({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+        accessEventLimit: 20,
+      });
+    } catch (error) {
+      console.error(`[runtime:read] Falha ao consultar detalhe operacional do documento ${documentId}.`, error);
+      if (isDocumentScopeError(error)) {
+        throw new NotFoundException("Documento nao encontrado para a sessao atual.");
+      }
+      throw new BadRequestException("Nao foi possivel consultar o detalhe do documento.");
     }
   }
 
@@ -2472,6 +2502,128 @@ function buildMockEncounterDocumentSignatureRequest(params: {
       },
     ],
   };
+}
+
+function buildMockDocumentOperationalDetail(documentReference: string): RuntimeDocumentOperationalDetail {
+  const document = buildMockEncounterDocumentSignatureRequest({
+    documentReference,
+    signerType: "patient",
+    signerName: "Paciente mock",
+    signerEmail: "paciente.mock@emagreceplus.local",
+    providerCode: "mock",
+    expiresAt: null,
+  });
+  const now = new Date().toISOString();
+
+  return {
+    id: document.id,
+    runtimeId: document.runtimeId,
+    documentType: document.documentType,
+    status: document.status,
+    title: document.title,
+    summary: document.summary,
+    documentNumber: document.documentNumber,
+    issuedAt: document.issuedAt,
+    expiresAt: document.expiresAt,
+    signedAt: document.signedAt,
+    patient: {
+      id: "mock-patient",
+      runtimeId: "mock-patient",
+      name: "Paciente mock",
+    },
+    encounter: {
+      id: `mock-encounter-${documentReference}`,
+      runtimeId: `mock-encounter-${documentReference}`,
+      encounterType: "follow_up",
+      status: "open",
+      openedAt: document.issuedAt,
+      closedAt: null,
+    },
+    template: document.template,
+    author: {
+      runtimeId: "mock-author",
+      name: "Equipe clinica mock",
+      email: null,
+    },
+    professional: {
+      id: "mock-professional",
+      runtimeId: "mock-professional",
+      name: "Profissional mock",
+      professionalType: "nutritionist",
+      licenseNumber: null,
+    },
+    currentVersion: document.currentVersion
+      ? {
+          id: document.currentVersion.id,
+          runtimeId: document.currentVersion.runtimeId,
+          versionNumber: document.currentVersion.versionNumber,
+          status: document.currentVersion.status,
+          title: document.currentVersion.title,
+          summary: document.currentVersion.summary,
+          issuedAt: document.currentVersion.issuedAt,
+          signedAt: document.currentVersion.signedAt,
+          checksum: null,
+          hasStorageObject: Boolean(
+            document.currentVersion.storageObjectPath || document.currentVersion.signedStorageObjectPath
+          ),
+        }
+      : null,
+    printableArtifacts: document.printableArtifacts.map((artifact) => ({
+      id: artifact.id,
+      runtimeId: artifact.runtimeId,
+      artifactKind: artifact.artifactKind,
+      renderStatus: artifact.renderStatus,
+      renderedAt: artifact.renderedAt,
+      failureReason: artifact.failureReason,
+      checksum: null,
+      hasStorageObject: Boolean(artifact.storageObjectPath),
+    })),
+    signatureRequests: document.signatureRequests.map((request) => ({
+      ...request,
+      externalRequestId: null,
+      latestDispatch: {
+        id: "mock-dispatch",
+        providerCode: request.providerCode,
+        dispatchStatus: "sent",
+        externalRequestId: null,
+        attemptedAt: request.requestedAt,
+        completedAt: request.requestedAt,
+        errorMessage: null,
+      },
+    })),
+    signatureEvents: [
+      {
+        id: "mock-signature-event",
+        runtimeId: "mock-signature-event",
+        signatureRequestId: document.signatureRequests[0]?.id ?? null,
+        eventType: "signature_dispatch",
+        source: "mock",
+        externalEventId: null,
+        eventAt: now,
+        createdAt: now,
+      },
+    ],
+    dispatchEvents: [
+      {
+        id: "mock-dispatch",
+        signatureRequestId: document.signatureRequests[0]?.id ?? null,
+        providerCode: "mock",
+        dispatchStatus: "sent",
+        externalRequestId: null,
+        attemptedAt: now,
+        completedAt: now,
+        errorMessage: null,
+      },
+    ],
+    prescriptions: [],
+    accessEvents: [],
+  };
+}
+
+function isDocumentScopeError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  return /not found|outside the current unit scope|denied/i.test(message);
 }
 
 function normalizeDocumentListNumber(

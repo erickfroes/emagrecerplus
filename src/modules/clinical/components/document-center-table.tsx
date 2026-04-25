@@ -1,6 +1,7 @@
 "use client";
 
-import { Copy, Download, ExternalLink, FileText } from "lucide-react";
+import Link from "next/link";
+import { Copy, Download, ExternalLink, Eye, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -56,7 +57,7 @@ export function DocumentCenterTable({
               <TableHeaderCell>Assinatura</TableHeaderCell>
               <TableHeaderCell>Artefatos</TableHeaderCell>
               <TableHeaderCell>Emissao</TableHeaderCell>
-              <TableHeaderCell className="min-w-[260px]">Acoes</TableHeaderCell>
+              <TableHeaderCell className="min-w-[340px]">Acoes</TableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -71,7 +72,12 @@ export function DocumentCenterTable({
                         <FileText className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-950">{document.title}</p>
+                        <Link
+                          href={`/clinical/documents/${encodeURIComponent(document.id)}`}
+                          className="font-medium text-slate-950 transition hover:text-brand"
+                        >
+                          {document.title}
+                        </Link>
                         <p className="mt-1 text-xs text-slate-500">
                           {document.documentNumber ? `Numero ${document.documentNumber}` : "Sem numero"}
                           {document.summary ? ` / ${document.summary}` : ""}
@@ -101,6 +107,14 @@ export function DocumentCenterTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/clinical/documents/${encodeURIComponent(document.id)}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-3 py-2 text-xs font-medium text-foreground transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/15 focus-visible:ring-offset-2"
+                        title="Ver detalhe operacional"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Detalhe
+                      </Link>
                       <ActionButton
                         label="Abrir"
                         title="Abrir documento com signed URL temporaria"
