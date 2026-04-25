@@ -251,26 +251,37 @@ function toFiniteNumber(value: unknown, message: string) {
   return parsed;
 }
 
-function createRuntimeAuthenticatedClient() {
+function createRuntimeRpcClient(accessToken?: string | null) {
   const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   assert(supabaseUrl, "SUPABASE_URL ausente para validar RPCs autenticadas.");
   assert(publishableKey, "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ausente para validar RPCs autenticadas.");
-  assert(requestAccessToken, "Access token ausente para validar RPCs autenticadas.");
 
   return createClient(supabaseUrl, publishableKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${requestAccessToken}`,
-      },
-    },
+    global: accessToken
+      ? {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      : undefined,
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
   });
+}
+
+function createRuntimeAuthenticatedClient() {
+  assert(requestAccessToken, "Access token ausente para validar RPCs autenticadas.");
+
+  return createRuntimeRpcClient(requestAccessToken);
+}
+
+function createRuntimeAnonymousClient() {
+  return createRuntimeRpcClient();
 }
 
 function createRuntimeAdminClient() {
@@ -287,6 +298,53 @@ function createRuntimeAdminClient() {
       detectSessionInUrl: false,
     },
   });
+}
+
+function assertDirectDocumentBrokerRpcRejected(
+  label: string,
+  result: { data: unknown; error: { code?: string; message?: string } | null }
+) {
+  assert(result.error, `${label} deveria ser bloqueada pelo PostgREST/RPC.`);
+
+  const errorCode = result.error.code ?? "";
+  const errorMessage = result.error.message ?? "";
+  assert(
+    errorCode === "42501" ||
+      errorCode.startsWith("PGRST") ||
+      /permission denied|not found|could not find|denied/i.test(errorMessage),
+    `${label} falhou por motivo inesperado: ${errorCode} ${errorMessage}`.trim()
+  );
+}
+
+async function assertDirectDocumentBrokerRpcDenied(params: {
+  artifactId: string | null;
+  client: ReturnType<typeof createRuntimeRpcClient>;
+  documentId: string;
+  label: string;
+  legacyTenantId: string;
+  legacyUnitId: string | null;
+  patientId: string | null;
+}) {
+  const listResult = await params.client.rpc("list_accessible_patient_documents", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_legacy_unit_id: params.legacyUnitId,
+    p_patient_id: params.patientId,
+    p_status: "issued",
+    p_document_type: null,
+    p_limit: 10,
+    p_offset: 0,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(`${params.label}: list_accessible_patient_documents`, listResult);
+
+  const prepareResult = await params.client.rpc("prepare_patient_document_access", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_artifact_id: params.artifactId,
+    p_legacy_unit_id: params.legacyUnitId,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(`${params.label}: prepare_patient_document_access`, prepareResult);
 }
 
 async function waitForHealth() {
@@ -888,6 +946,7 @@ async function main() {
       commercialCatalog.programPackages.find((item) => item.programId === smokeProgramId)?.packageId ??
       commercialCatalog.packages[0]?.id ??
       null;
+    let limitedAccessToken: string | null = null;
 
     if (isRealAuthEnabled()) {
       assert(smokeProgramId, "leads/catalog nao retornou programId para o smoke.");
@@ -1303,6 +1362,7 @@ async function main() {
       );
 
       const invitedAccessToken = invitedSignInResult.data.session.access_token;
+      limitedAccessToken = invitedAccessToken;
 
       const invitedSession = await requestJsonWithToken<{
         user: { email: string; role: string };
@@ -3546,6 +3606,47 @@ async function main() {
         !("storageObjectPath" in documentAccessLinks.currentVersion),
         "GET /documents/:id/access-links nao deve expor storageObjectPath da versao atual."
       );
+    }
+
+    if (isRealAuthEnabled()) {
+      const previewArtifact = documentWithArtifact.printableArtifacts?.find(
+        (artifact) => artifact.artifactKind === "preview"
+      );
+
+      assert(previewArtifact?.id, "Artefato preview ausente para validar RPC documental direta.");
+      assert(limitedAccessToken, "Token de usuario sem permissao clinica ausente para validar RPC documental.");
+
+      logStep("Validando bloqueio direto das RPCs documentais via PostgREST");
+
+      await assertDirectDocumentBrokerRpcDenied({
+        artifactId: previewArtifact.id,
+        client: createRuntimeAnonymousClient(),
+        documentId: createdDocument.id,
+        label: "RPC documental anonima",
+        legacyTenantId: tenant.id,
+        legacyUnitId: state.primaryUnitId ?? null,
+        patientId: createdPatient.id,
+      });
+
+      await assertDirectDocumentBrokerRpcDenied({
+        artifactId: previewArtifact.id,
+        client: createRuntimeRpcClient(limitedAccessToken),
+        documentId: createdDocument.id,
+        label: "RPC documental com usuario sem permissao clinica",
+        legacyTenantId: tenant.id,
+        legacyUnitId: state.primaryUnitId ?? null,
+        patientId: createdPatient.id,
+      });
+
+      await assertDirectDocumentBrokerRpcDenied({
+        artifactId: previewArtifact.id,
+        client: createRuntimeAuthenticatedClient(),
+        documentId: createdDocument.id,
+        label: "RPC documental cross-tenant",
+        legacyTenantId: deterministicUuid("smoke-cross-tenant", String(timestamp)),
+        legacyUnitId: null,
+        patientId: createdPatient.id,
+      });
     }
 
     const documentWithSignatureRequest = await requestJson<{
