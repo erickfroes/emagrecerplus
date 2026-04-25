@@ -434,24 +434,22 @@ async function setupRequestAuth() {
 
   logStep("Configurando sessao autenticada para validar rotas protegidas");
 
-  const [tenant, role, unit] = await Promise.all([
-    prisma.tenant.findFirstOrThrow({
-      where: { deletedAt: null },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    }),
-    prisma.role.findFirstOrThrow({
-      where: { code: "admin" },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    }),
-    prisma.unit.findMany({
-      where: { deletedAt: null },
-      orderBy: { createdAt: "asc" },
-      take: 2,
-      select: { id: true, name: true },
-    }),
-  ]);
+  const tenant = await prisma.tenant.findFirstOrThrow({
+    where: { deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const role = await prisma.role.findFirstOrThrow({
+    where: { code: "admin" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const unit = await prisma.unit.findMany({
+    where: { deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    take: 2,
+    select: { id: true, name: true },
+  });
 
   assert(unit.length > 0, "Nao foi encontrada nenhuma unidade para o smoke autenticado.");
   state.primaryUnitId = unit[0].id;
@@ -778,32 +776,30 @@ async function main() {
   );
   logStep("Consultando fixtures base");
 
-  const [appointmentType, professional, tenant, pipelineStage] = await Promise.all([
-    prisma.appointmentType.findFirstOrThrow({
-      where: { active: true },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    }),
-    prisma.professional.findFirstOrThrow({
-      where: { deletedAt: null },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    }),
-    prisma.tenant.findFirstOrThrow({
-      where: { deletedAt: null },
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    }),
-    prisma.pipelineStage.findFirstOrThrow({
-      where: {
-        code: {
-          in: ["qualified", "appointment_booked", "proposal_sent"],
-        },
+  const appointmentType = await prisma.appointmentType.findFirstOrThrow({
+    where: { active: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const professional = await prisma.professional.findFirstOrThrow({
+    where: { deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const tenant = await prisma.tenant.findFirstOrThrow({
+    where: { deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  const pipelineStage = await prisma.pipelineStage.findFirstOrThrow({
+    where: {
+      code: {
+        in: ["qualified", "appointment_booked", "proposal_sent"],
       },
-      orderBy: { position: "asc" },
-      select: { code: true },
-    }),
-  ]);
+    },
+    orderBy: { position: "asc" },
+    select: { code: true },
+  });
 
   const apiProcess = startApiProcess();
 

@@ -223,27 +223,26 @@ export class CrmService {
       orderBy: { position: "asc" },
     });
 
-    await this.prisma.$transaction([
-      this.prisma.activity.create({
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.activity.create({
         data: {
           leadId: lead.id,
           assignedUserId: salesUserId,
           activityType: ActivityType.TASK,
           description: "Realizar primeiro contato com este lead.",
         },
-      }),
-      ...(firstStage
-        ? [
-            this.prisma.leadStageHistory.create({
-              data: {
-                leadId: lead.id,
-                stageId: firstStage.id,
-                changedBy: salesUserId,
-              },
-            }),
-          ]
-        : []),
-    ]);
+      });
+
+      if (firstStage) {
+        await tx.leadStageHistory.create({
+          data: {
+            leadId: lead.id,
+            stageId: firstStage.id,
+            changedBy: salesUserId,
+          },
+        });
+      }
+    });
 
     await this.syncCommercialRuntimeProjectionSafely(tenantId, lead.id);
 
@@ -631,19 +630,19 @@ export class CrmService {
 
     const status = mapStageCodeToLeadStatus(stage.code);
 
-    await this.prisma.$transaction([
-      this.prisma.lead.update({
+    await this.prisma.$transaction(async (tx: any) => {
+      await tx.lead.update({
         where: { id: lead.id },
         data: { status },
-      }),
-      this.prisma.leadStageHistory.create({
+      });
+      await tx.leadStageHistory.create({
         data: {
           leadId: lead.id,
           stageId: stage.id,
           changedBy,
         },
-      }),
-    ]);
+      });
+    });
 
     await this.syncCommercialRuntimeProjectionSafely(tenantId, lead.id);
 
