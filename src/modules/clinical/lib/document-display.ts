@@ -20,6 +20,16 @@ export const documentStatusOptions = [
   { value: "archived", label: "Arquivado" },
 ];
 
+export const signatureStatusOptions = [
+  { value: "pending", label: "Pendente" },
+  { value: "sent", label: "Enviada" },
+  { value: "viewed", label: "Visualizada" },
+  { value: "signed", label: "Assinada" },
+  { value: "declined", label: "Recusada" },
+  { value: "expired", label: "Expirada" },
+  { value: "cancelled", label: "Cancelada" },
+];
+
 export function formatDocumentType(value: string) {
   return documentTypeOptions.find((option) => option.value === value)?.label ?? "Personalizado";
 }

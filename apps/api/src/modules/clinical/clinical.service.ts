@@ -175,6 +175,9 @@ type ListDocumentsQuery = {
   patientId?: string;
   status?: string;
   documentType?: string;
+  signatureStatus?: string;
+  issuedFrom?: string;
+  issuedTo?: string;
   limit?: string | number;
   offset?: string | number;
 };
@@ -1016,6 +1019,12 @@ export class ClinicalService {
 
     const limit = normalizeDocumentListNumber(params.limit, 50, 1, 100);
     const offset = normalizeDocumentListNumber(params.offset, 0, 0, 10000);
+    const issuedFrom = normalizeDocumentListDate(params.issuedFrom, "issuedFrom", "from");
+    const issuedTo = normalizeDocumentListDate(params.issuedTo, "issuedTo", "to");
+
+    if (issuedFrom && issuedTo && Date.parse(issuedFrom) > Date.parse(issuedTo)) {
+      throw new BadRequestException("issuedFrom deve ser anterior ou igual a issuedTo.");
+    }
 
     if (!this.isRealAuthEnabled()) {
       return {
@@ -1033,6 +1042,9 @@ export class ClinicalService {
         patientId: params.patientId,
         status: params.status,
         documentType: params.documentType,
+        signatureStatus: params.signatureStatus,
+        issuedFrom,
+        issuedTo,
         limit,
         offset,
       });
@@ -2475,6 +2487,52 @@ function normalizeDocumentListNumber(
   }
 
   return Math.min(Math.max(parsed, minimum), maximum);
+}
+
+function normalizeDocumentListDate(
+  value: string | undefined,
+  fieldName: string,
+  boundary: "from" | "to"
+) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const dateOnlyMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsed = dateOnlyMatch
+    ? buildStrictDateOnly(dateOnlyMatch, boundary)
+    : new Date(normalized);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new BadRequestException(`${fieldName} deve ser uma data valida.`);
+  }
+
+  return parsed.toISOString();
+}
+
+function buildStrictDateOnly(
+  match: RegExpMatchArray,
+  boundary: "from" | "to"
+) {
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return new Date(Number.NaN);
+  }
+
+  if (boundary === "to") {
+    parsed.setUTCHours(23, 59, 59, 999);
+  }
+
+  return parsed;
 }
 
 function buildMockDocumentAccessLink(

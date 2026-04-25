@@ -36,6 +36,9 @@ export default function ClinicalDocumentsPage() {
   const [patientId, setPatientId] = useState("");
   const [documentType, setDocumentType] = useState("");
   const [status, setStatus] = useState("");
+  const [signatureStatus, setSignatureStatus] = useState("");
+  const [issuedFrom, setIssuedFrom] = useState("");
+  const [issuedTo, setIssuedTo] = useState("");
   const [offset, setOffset] = useState(0);
   const [pendingAction, setPendingAction] = useState<DocumentCenterPendingAction>(null);
   const [actionMessage, setActionMessage] = useState<ActionMessage>(null);
@@ -47,17 +50,22 @@ export default function ClinicalDocumentsPage() {
       patientId: deferredPatientId.trim() || undefined,
       documentType: documentType || undefined,
       status: status || undefined,
+      signatureStatus: signatureStatus || undefined,
+      issuedFrom: issuedFrom || undefined,
+      issuedTo: issuedTo || undefined,
       limit: DOCUMENTS_PAGE_SIZE,
       offset,
     }),
-    [deferredPatientId, documentType, offset, status],
+    [deferredPatientId, documentType, issuedFrom, issuedTo, offset, signatureStatus, status],
   );
 
   const documentsQuery = useClinicalDocuments(filters, {
     enabled: canViewDocuments,
   });
 
-  const hasActiveFilters = Boolean(patientId.trim() || documentType || status);
+  const hasActiveFilters = Boolean(
+    patientId.trim() || documentType || status || signatureStatus || issuedFrom || issuedTo
+  );
   const documentsPage = documentsQuery.data ?? null;
   const documents = documentsPage?.items ?? [];
   const hasNextPage = documentsPage
@@ -136,16 +144,25 @@ export default function ClinicalDocumentsPage() {
             patientId={patientId}
             documentType={documentType}
             status={status}
+            signatureStatus={signatureStatus}
+            issuedFrom={issuedFrom}
+            issuedTo={issuedTo}
             hasActiveFilters={hasActiveFilters}
             disabled={documentsQuery.isLoading}
             onPatientIdChange={(value) => resetOffsetAndRun(() => setPatientId(value))}
             onDocumentTypeChange={(value) => resetOffsetAndRun(() => setDocumentType(value))}
             onStatusChange={(value) => resetOffsetAndRun(() => setStatus(value))}
+            onSignatureStatusChange={(value) => resetOffsetAndRun(() => setSignatureStatus(value))}
+            onIssuedFromChange={(value) => resetOffsetAndRun(() => setIssuedFrom(value))}
+            onIssuedToChange={(value) => resetOffsetAndRun(() => setIssuedTo(value))}
             onClear={() =>
               resetOffsetAndRun(() => {
                 setPatientId("");
                 setDocumentType("");
                 setStatus("");
+                setSignatureStatus("");
+                setIssuedFrom("");
+                setIssuedTo("");
               })
             }
           />

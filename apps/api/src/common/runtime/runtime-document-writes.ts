@@ -143,6 +143,9 @@ export type ListRuntimeAccessiblePatientDocumentsInput = {
   patientId?: string | null;
   status?: string | null;
   documentType?: string | null;
+  signatureStatus?: string | null;
+  issuedFrom?: string | null;
+  issuedTo?: string | null;
   limit?: number | null;
   offset?: number | null;
 };
@@ -514,6 +517,9 @@ export async function listRuntimeAccessiblePatientDocuments(
     p_document_type: params.documentType ?? null,
     p_limit: params.limit ?? 50,
     p_offset: params.offset ?? 0,
+    p_signature_status: params.signatureStatus ?? null,
+    p_issued_from: params.issuedFrom ?? null,
+    p_issued_to: params.issuedTo ?? null,
   });
 
   if (error) {

@@ -6,31 +6,44 @@ import { Input } from "@/components/ui/input";
 import {
   documentStatusOptions,
   documentTypeOptions,
+  signatureStatusOptions,
 } from "@/modules/clinical/lib/document-display";
 
 export function DocumentCenterFilters({
   patientId,
   documentType,
   status,
+  signatureStatus,
+  issuedFrom,
+  issuedTo,
   hasActiveFilters,
   disabled,
   onPatientIdChange,
   onDocumentTypeChange,
   onStatusChange,
+  onSignatureStatusChange,
+  onIssuedFromChange,
+  onIssuedToChange,
   onClear,
 }: {
   patientId: string;
   documentType: string;
   status: string;
+  signatureStatus: string;
+  issuedFrom: string;
+  issuedTo: string;
   hasActiveFilters: boolean;
   disabled?: boolean;
   onPatientIdChange: (value: string) => void;
   onDocumentTypeChange: (value: string) => void;
   onStatusChange: (value: string) => void;
+  onSignatureStatusChange: (value: string) => void;
+  onIssuedFromChange: (value: string) => void;
+  onIssuedToChange: (value: string) => void;
   onClear: () => void;
 }) {
   return (
-    <div className="grid gap-3 rounded-3xl border border-border bg-surface p-4 md:grid-cols-[1.2fr_1fr_1fr_auto]">
+    <div className="grid gap-3 rounded-3xl border border-border bg-surface p-4 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_1fr_0.9fr_0.9fr_auto]">
       <label className="grid gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
         Paciente
         <Input
@@ -73,6 +86,43 @@ export function DocumentCenterFilters({
             </option>
           ))}
         </select>
+      </label>
+
+      <label className="grid gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+        Assinatura
+        <select
+          className="field-base"
+          value={signatureStatus}
+          onChange={(event) => onSignatureStatusChange(event.target.value)}
+          disabled={disabled}
+        >
+          <option value="">Todos</option>
+          {signatureStatusOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="grid gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+        Inicio
+        <Input
+          type="date"
+          value={issuedFrom}
+          onChange={(event) => onIssuedFromChange(event.target.value)}
+          disabled={disabled}
+        />
+      </label>
+
+      <label className="grid gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+        Fim
+        <Input
+          type="date"
+          value={issuedTo}
+          onChange={(event) => onIssuedToChange(event.target.value)}
+          disabled={disabled}
+        />
       </label>
 
       <div className="flex items-end">
