@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useState } from "react";
 import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ClinicalTasksFilters } from "@/modules/clinical/components/clinical-tasks-filters";
 import { ClinicalTasksTable } from "@/modules/clinical/components/clinical-tasks-table";
 import { useClinicalTasks } from "@/modules/clinical/hooks/use-clinical-tasks";
@@ -40,7 +41,13 @@ export default function ClinicalTasksPage() {
 
       {isLoading ? <p className="text-sm text-slate-500">Carregando tarefas...</p> : null}
       {isError ? <p className="text-sm text-red-600">Erro ao carregar tarefas.</p> : null}
-      {data ? <ClinicalTasksTable items={data.items} /> : null}
+      {data && data.items.length === 0 ? (
+        <EmptyState
+          title="Nenhuma tarefa clinica encontrada"
+          description="Nao ha pendencias para os filtros selecionados no momento."
+        />
+      ) : null}
+      {data && data.items.length > 0 ? <ClinicalTasksTable items={data.items} /> : null}
     </div>
   );
 }

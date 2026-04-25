@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
+import { usePermissions } from "@/hooks/use-permissions";
 import { LeadActivitiesManager } from "@/modules/crm/components/lead-activities-manager";
 import { LeadActivitiesTimeline } from "@/modules/crm/components/lead-activities-timeline";
 import { useConvertLead } from "@/modules/crm/hooks/use-convert-lead";
@@ -23,6 +24,7 @@ export function LeadDrawer({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
+  const { can } = usePermissions();
   const moveStageMutation = useMoveLeadStage();
   const convertLeadMutation = useConvertLead();
   const [selectedStageCode, setSelectedStageCode] = useState("");
@@ -44,6 +46,7 @@ export function LeadDrawer({
   }
 
   const currentLead = lead;
+  const canWrite = can("crm:write");
   const currentStageCode =
     availableStages.find((stage) => stage.title === currentLead.stage)?.code ?? "";
 
@@ -84,7 +87,7 @@ export function LeadDrawer({
             type="button"
             variant="secondary"
             onClick={handleMoveStage}
-            disabled={moveStageMutation.isPending || !selectedStageCode}
+            disabled={!canWrite || moveStageMutation.isPending || !selectedStageCode}
           >
             {moveStageMutation.isPending ? "Atualizando..." : "Atualizar etapa"}
           </Button>
@@ -92,7 +95,7 @@ export function LeadDrawer({
             type="button"
             variant="secondary"
             onClick={handleConvertLead}
-            disabled={convertLeadMutation.isPending}
+            disabled={!canWrite || convertLeadMutation.isPending}
           >
             {convertLeadMutation.isPending ? "Convertendo..." : "Converter em paciente"}
           </Button>
@@ -122,6 +125,7 @@ export function LeadDrawer({
             className="field-base mt-3"
             value={selectedStageCode}
             onChange={(event) => setSelectedStageCode(event.target.value)}
+            disabled={!canWrite}
           >
             {availableStages.map((stage) => (
               <option key={stage.code} value={stage.code}>
@@ -129,6 +133,11 @@ export function LeadDrawer({
               </option>
             ))}
           </select>
+          {!canWrite ? (
+            <p className="mt-2 text-xs text-slate-500">
+              Sua sessao pode visualizar o lead, mas nao alterar etapa nem converter.
+            </p>
+          ) : null}
 
           {moveStageMutation.isError ? (
             <p className="mt-2 text-xs text-red-600">Erro ao atualizar etapa do lead.</p>
@@ -148,7 +157,7 @@ export function LeadDrawer({
 
         <div className="rounded-2xl border border-slate-100 p-4">
           <p className="mb-3 text-sm font-medium text-slate-950">Atividades comerciais</p>
-          <LeadActivitiesManager leadId={lead.id} />
+          <LeadActivitiesManager leadId={lead.id} canWrite={canWrite} />
         </div>
       </div>
     </Drawer>

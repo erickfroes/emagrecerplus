@@ -1,8 +1,22 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getServerAuthState } from "@/lib/auth/server-session";
 
-export default function PatientPortalLayout({
+export default async function PatientPortalLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const authState = await getServerAuthState();
+
+  if (authState.authMode === "real" && !authState.supabaseUser) {
+    redirect("/login");
+  }
+
+  if (authState.authMode === "real" && authState.supabaseUser && authState.appSessionState === "invalid") {
+    redirect("/auth/sign-out?next=/login");
+  }
+
+  const showBackToAdmin = authState.appSession?.user.role !== "patient";
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-4 py-6">
@@ -11,9 +25,11 @@ export default function PatientPortalLayout({
             <p className="text-xs uppercase tracking-[0.18em] text-slate-400">EmagrecePlus</p>
             <p className="text-sm font-semibold text-slate-950">Portal do paciente</p>
           </div>
-          <Link className="text-sm font-medium text-slate-600 hover:text-slate-950" href="/dashboard">
-            Voltar ao admin
-          </Link>
+          {showBackToAdmin ? (
+            <Link className="text-sm font-medium text-slate-600 hover:text-slate-950" href="/dashboard">
+              Voltar ao admin
+            </Link>
+          ) : null}
         </header>
 
         <main className="flex-1">{children}</main>

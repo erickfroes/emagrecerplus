@@ -1,0 +1,85 @@
+name: Vercel Preview
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-preview-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  detect-vercel-secrets:
+    name: Detect Vercel Secrets
+    runs-on: ubuntu-latest
+    outputs:
+      has_vercel: ${{ steps.detect.outputs.has_vercel }}
+    steps:
+      - name: Check required secrets
+        id: detect
+        shell: bash
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [[ -n "$VERCEL_TOKEN" && -n "$VERCEL_ORG_ID" && -n "$VERCEL_PROJECT_ID" ]]; then
+            echo "has_vercel=true" >> "$GITHUB_OUTPUT"
+            echo "Vercel preview deploy is enabled for this repository." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_vercel=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Vercel preview deploy because required GitHub secrets are missing." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs:
+      - detect-vercel-secrets
+    if: needs.detect-vercel-secrets.outputs.has_vercel == 'true'
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.deployment_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull preview environment
+        run: npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build preview artifacts
+        run: npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy preview
+        id: deploy
+        shell: bash
+        run: |
+          DEPLOYMENT_URL="$(npx vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})"
+          echo "deployment_url=$DEPLOYMENT_URL" >> "$GITHUB_OUTPUT"
+          echo "Preview deployment: $DEPLOYMENT_URL" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-preview-skipped:
+    name: Preview Deploy Skipped
+    runs-on: ubuntu-latest
+    needs:
+      - detect-vercel-secrets
+    if: needs.detect-vercel-secrets.outputs.has_vercel != 'true'
+    steps:
+      - name: Explain skip
+        run: |
+          echo "Skipping preview deploy because Vercel secrets are not configured in GitHub Actions." >> "$GITHUB_STEP_SUMMARY"

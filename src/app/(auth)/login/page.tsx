@@ -14,7 +14,7 @@ export default async function LoginPage() {
     authState.supabaseUser &&
     authState.appSessionState === "valid"
   ) {
-    redirect("/dashboard");
+    redirect(authState.appSession?.user.role === "patient" ? "/app" : "/dashboard");
   }
 
   return <LoginPageClient />;

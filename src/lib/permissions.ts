@@ -107,4 +107,5 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.dashboardView,
     permissions.settingsView,
   ],
+  patient: [],
 };

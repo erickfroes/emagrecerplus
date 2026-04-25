@@ -19,7 +19,13 @@ const activityTypeOptions = [
   { value: "NOTE", label: "Observacao" },
 ] as const;
 
-export function LeadActivitiesManager({ leadId }: { leadId: string }) {
+export function LeadActivitiesManager({
+  leadId,
+  canWrite,
+}: {
+  leadId: string;
+  canWrite: boolean;
+}) {
   const { data, isLoading, isError } = useLeadActivities(leadId);
   const createMutation = useCreateLeadActivity();
   const updateMutation = useUpdateLeadActivity();
@@ -101,6 +107,7 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
             className="field-base"
             value={activityType}
             onChange={(event) => setActivityType(event.target.value)}
+            disabled={!canWrite}
           >
             {activityTypeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -108,20 +115,31 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
               </option>
             ))}
           </select>
-          <Input type="datetime-local" value={dueAt} onChange={(event) => setDueAt(event.target.value)} />
+          <Input
+            type="datetime-local"
+            value={dueAt}
+            onChange={(event) => setDueAt(event.target.value)}
+            disabled={!canWrite}
+          />
         </div>
         <textarea
           className="mt-3 min-h-24 w-full rounded-2xl border border-border px-3 py-2 text-sm text-slate-700 outline-none"
           placeholder="Descreva a atividade que o time comercial precisa executar."
           value={description}
           onChange={(event) => setDescription(event.target.value)}
+          disabled={!canWrite}
         />
+        {!canWrite ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Sua sessao pode acompanhar as atividades, mas nao criar nem editar registros comerciais.
+          </p>
+        ) : null}
         <div className="mt-3 flex justify-end">
           <Button
             size="sm"
             type="button"
             onClick={handleCreate}
-            disabled={createMutation.isPending || !description.trim()}
+            disabled={!canWrite || createMutation.isPending || !description.trim()}
           >
             {createMutation.isPending ? "Salvando..." : "Adicionar atividade"}
           </Button>
@@ -162,6 +180,7 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
                       className="field-base"
                       value={editingType}
                       onChange={(event) => setEditingType(event.target.value)}
+                      disabled={!canWrite}
                     >
                       {activityTypeOptions.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -173,12 +192,14 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
                       type="datetime-local"
                       value={editingDueAt}
                       onChange={(event) => setEditingDueAt(event.target.value)}
+                      disabled={!canWrite}
                     />
                   </div>
                   <textarea
                     className="min-h-24 w-full rounded-2xl border border-border px-3 py-2 text-sm text-slate-700 outline-none"
                     value={editingDescription}
                     onChange={(event) => setEditingDescription(event.target.value)}
+                    disabled={!canWrite}
                   />
                   <div className="flex justify-end gap-2">
                     <Button size="sm" type="button" variant="secondary" onClick={cancelEditing}>
@@ -188,7 +209,7 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
                       size="sm"
                       type="button"
                       onClick={() => handleSave(activity.id)}
-                      disabled={updateMutation.isPending || !editingDescription.trim()}
+                      disabled={!canWrite || updateMutation.isPending || !editingDescription.trim()}
                     >
                       {updateMutation.isPending ? "Salvando..." : "Salvar edicao"}
                     </Button>
@@ -198,7 +219,13 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
                 <>
                   <p className="mt-3 text-sm text-slate-600">{activity.description}</p>
                   <div className="mt-3 flex flex-wrap justify-end gap-2">
-                    <Button size="sm" type="button" variant="secondary" onClick={() => startEditing(activity)}>
+                    <Button
+                      size="sm"
+                      type="button"
+                      variant="secondary"
+                      onClick={() => startEditing(activity)}
+                      disabled={!canWrite}
+                    >
                       Editar
                     </Button>
                     <Button
@@ -206,7 +233,7 @@ export function LeadActivitiesManager({ leadId }: { leadId: string }) {
                       type="button"
                       variant="secondary"
                       onClick={() => handleToggleCompleted(activity)}
-                      disabled={updateMutation.isPending}
+                      disabled={!canWrite || updateMutation.isPending}
                     >
                       {activity.completedAt ? "Reabrir" : "Concluir"}
                     </Button>

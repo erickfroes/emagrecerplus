@@ -34,6 +34,7 @@ export function getMockSession(email = env.demoDefaultEmail): AuthSession {
   const role = inferRoleByEmail(normalizedEmail);
 
   return {
+    tenantId: "tenant-demo",
     user: {
       id: `mock-user-${role}`,
       name: toDisplayName(normalizedEmail),
@@ -42,6 +43,7 @@ export function getMockSession(email = env.demoDefaultEmail): AuthSession {
     },
     units: defaultUnits,
     currentUnitId: defaultUnits[0].id,
+    accessibleUnitIds: defaultUnits.map((unit) => unit.id),
     permissions: rolePermissions[role],
   };
 }

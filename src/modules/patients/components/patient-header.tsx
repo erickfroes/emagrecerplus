@@ -1,6 +1,9 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { usePermissions } from "@/hooks/use-permissions";
 import { PatientFlagsInline } from "@/modules/patients/components/patient-flags-inline";
 import { PatientTagsInline } from "@/modules/patients/components/patient-tags-inline";
-import { Button } from "@/components/ui/button";
 
 export function PatientHeader({
   name,
@@ -17,13 +20,15 @@ export function PatientHeader({
   tags: string[];
   flags: string[];
 }) {
+  const { can } = usePermissions();
+
   return (
     <div className="rounded-3xl border border-border bg-surface p-5 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.35)]">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-950">{name}</h1>
           <p className="mt-1 text-sm text-slate-500">
-            {age} anos · {email} · {phone}
+            {age} anos - {email} - {phone}
           </p>
 
           <div className="mt-3 flex flex-col gap-2">
@@ -33,11 +38,11 @@ export function PatientHeader({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary">Novo agendamento</Button>
-          <Button variant="secondary">Nova evolucao</Button>
-          <Button variant="secondary">Nova tarefa clinica</Button>
-          <Button variant="secondary">Adicionar flag</Button>
-          <Button>Registrar habito</Button>
+          {can("schedule:write") ? <Button variant="secondary">Novo agendamento</Button> : null}
+          {can("clinical:write") ? <Button variant="secondary">Nova evolucao</Button> : null}
+          {can("clinical:write") ? <Button variant="secondary">Nova tarefa clinica</Button> : null}
+          {can("patients:write") ? <Button variant="secondary">Adicionar flag</Button> : null}
+          {can("clinical:write") ? <Button>Registrar habito</Button> : null}
         </div>
       </div>
     </div>

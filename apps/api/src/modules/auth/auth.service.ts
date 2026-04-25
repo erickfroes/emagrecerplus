@@ -1,62 +1,220 @@
 import {
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { PrismaService } from "../../prisma/prisma.service.ts";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
+import type { AppRole, AppSessionPayload } from "../../common/auth/app-session.ts";
 import { supabaseAdmin } from "../../lib/supabase-admin.ts";
+import { createSupabaseRequestClient } from "../../lib/supabase-request.ts";
+import { PrismaService } from "../../prisma/prisma.service.ts";
 
-type AppPermission =
-  | "dashboard:view"
-  | "patients:view"
-  | "patients:write"
-  | "schedule:view"
-  | "schedule:write"
-  | "crm:view"
-  | "crm:write"
-  | "clinical:view"
-  | "clinical:write"
-  | "settings:view";
-
-type SessionUnitAccess = {
+type LegacyUnitAccess = {
   unit: {
     id: string;
     name: string;
+    code: string | null;
     addressId: string | null;
     address: { city: string } | null;
+    status: "ACTIVE" | "INACTIVE";
+    createdAt: Date;
+    deletedAt: Date | null;
   };
 };
 
-type TenantUnit = {
+type LegacyRoleLink = {
+  role: {
+    code: string;
+  };
+};
+
+type LegacyTenant = {
+  id: string;
+  legalName: string;
+  tradeName: string | null;
+  status: "ACTIVE" | "INACTIVE" | "ARCHIVED";
+  subscriptionPlanCode: string | null;
+};
+
+type LegacyUserRecord = {
+  id: string;
+  tenantId: string;
+  fullName: string;
+  email: string;
+  externalAuthId: string | null;
+  status: "ACTIVE" | "INVITED" | "SUSPENDED" | "DISABLED";
+  unitAccess: LegacyUnitAccess[];
+  userRoles: LegacyRoleLink[];
+  tenant: LegacyTenant;
+};
+
+type LegacyUnit = {
   id: string;
   name: string;
-  address: { city: string } | null;
+  code: string | null;
+  city: string;
+  status: "ACTIVE" | "INACTIVE";
+  createdAt: Date;
+  deletedAt: Date | null;
 };
+
+type LegacyAuthSnapshot = {
+  user: {
+    id: string;
+    tenantId: string;
+    fullName: string;
+    email: string;
+    status: LegacyUserRecord["status"];
+  };
+  tenant: LegacyTenant;
+  units: LegacyUnit[];
+  primaryRoleCode: AppRole;
+};
+
+type RuntimeUnitSession = {
+  id: string;
+  name: string;
+  city: string;
+};
+
+type RuntimeAppSession = {
+  tenantId: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: AppRole;
+  };
+  units: RuntimeUnitSession[];
+  currentUnitId: string;
+  accessibleUnitIds: string[];
+  permissions: AppSessionPayload["permissions"];
+};
+
+export type AuthProjectionSyncResult = {
+  email: string;
+  legacyUserId: string;
+  legacyTenantId: string;
+  runtimeUnitCount: number;
+  role: AppRole;
+};
+
+const APP_ROLES: AppRole[] = [
+  "owner",
+  "admin",
+  "manager",
+  "clinician",
+  "assistant",
+  "physician",
+  "nutritionist",
+  "reception",
+  "sales",
+  "nursing",
+  "financial",
+  "patient",
+];
+
+const APP_PERMISSIONS: AppSessionPayload["permissions"] = [
+  "dashboard:view",
+  "patients:view",
+  "patients:write",
+  "schedule:view",
+  "schedule:write",
+  "crm:view",
+  "crm:write",
+  "clinical:view",
+  "clinical:write",
+  "settings:view",
+];
 
 @Injectable()
 export class AuthService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getSessionFromAccessToken(accessToken: string) {
-    const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
-
-    if (error || !data.user) {
-      throw new UnauthorizedException("Token invalido.");
-    }
-
-    const authUser = data.user;
+  async getSessionFromAccessToken(accessToken: string): Promise<AppSessionPayload> {
+    const authUser = await this.resolveAuthenticatedUser(accessToken);
     const authEmail = authUser.email?.trim().toLowerCase();
 
     if (!authEmail) {
       throw new ForbiddenException("Usuario autenticado sem e-mail.");
     }
 
+    const legacySnapshot = await this.findLegacySnapshot(authUser.id, authEmail);
+
+    if (legacySnapshot) {
+      await this.ensureSupabaseAccessProjection(authUser, legacySnapshot);
+
+      const runtimeSession = await this.fetchRuntimeSession(accessToken);
+      return this.toLegacyCompatibleSession(runtimeSession, legacySnapshot);
+    }
+
+    let runtimeSession = await this.tryFetchRuntimeSession(accessToken);
+
+    if (!runtimeSession) {
+      const invitationAccepted = await this.acceptPendingInvitationForAuthUser(authUser, authEmail);
+
+      if (!invitationAccepted) {
+        throw new ForbiddenException(
+          "Usuario autenticado no Supabase, mas sem acesso liberado no sistema."
+        );
+      }
+
+      runtimeSession = await this.fetchRuntimeSession(accessToken);
+    }
+
+    return this.toRuntimeCompatibleSession(runtimeSession, authUser);
+  }
+
+  async syncRuntimeAccessForSupabaseUser(
+    authUser: SupabaseUser
+  ): Promise<AuthProjectionSyncResult> {
+    const authEmail = authUser.email?.trim().toLowerCase();
+
+    if (!authEmail) {
+      throw new ForbiddenException("Usuario autenticado sem e-mail.");
+    }
+
+    const legacySnapshot = await this.findLegacySnapshot(authUser.id, authEmail);
+
+    if (!legacySnapshot) {
+      throw new ForbiddenException(
+        "Usuario autenticado no Supabase, mas nao vinculado ao espelho legado."
+      );
+    }
+
+    await this.ensureSupabaseAccessProjection(authUser, legacySnapshot);
+
+    return {
+      email: authEmail,
+      legacyUserId: legacySnapshot.user.id,
+      legacyTenantId: legacySnapshot.tenant.id,
+      runtimeUnitCount: legacySnapshot.units.length,
+      role: legacySnapshot.primaryRoleCode,
+    };
+  }
+
+  private async resolveAuthenticatedUser(accessToken: string) {
+    const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
+
+    if (error || !data.user) {
+      throw new UnauthorizedException("Token invalido.");
+    }
+
+    return data.user;
+  }
+
+  private async findLegacySnapshot(
+    authUserId: string,
+    authEmail: string
+  ): Promise<LegacyAuthSnapshot | null> {
     let user = await this.prisma.user.findFirst({
       where: {
-        OR: [{ externalAuthId: authUser.id }, { email: authEmail }],
+        OR: [{ externalAuthId: authUserId }, { email: authEmail }],
         deletedAt: null,
       },
       include: {
+        tenant: true,
         unitAccess: {
           include: {
             unit: {
@@ -68,34 +226,25 @@ export class AuthService {
         },
         userRoles: {
           include: {
-            role: {
-              include: {
-                rolePermissions: {
-                  include: {
-                    permission: true,
-                  },
-                },
-              },
-            },
+            role: true,
           },
         },
       },
     });
 
     if (!user) {
-      throw new ForbiddenException(
-        "Usuario autenticado no Supabase, mas nao vinculado ao sistema."
-      );
+      return null;
     }
 
     if (!user.externalAuthId) {
       user = await this.prisma.user.update({
         where: { id: user.id },
         data: {
-          externalAuthId: authUser.id,
+          externalAuthId: authUserId,
           lastLoginAt: new Date(),
         },
         include: {
+          tenant: true,
           unitAccess: {
             include: {
               unit: {
@@ -107,15 +256,7 @@ export class AuthService {
           },
           userRoles: {
             include: {
-              role: {
-                include: {
-                  rolePermissions: {
-                    include: {
-                      permission: true,
-                    },
-                  },
-                },
-              },
+              role: true,
             },
           },
         },
@@ -129,109 +270,293 @@ export class AuthService {
       });
     }
 
-    const currentUser = user;
-    const permissionCodes = new Set<string>();
-
-    for (const userRole of currentUser.userRoles) {
-      for (const rolePermission of userRole.role.rolePermissions) {
-        permissionCodes.add(rolePermission.permission.code);
-      }
-    }
-
-    const permissions = this.mapPermissions([...permissionCodes]);
     const units =
-      currentUser.unitAccess.length > 0
-        ? currentUser.unitAccess.map((entry: SessionUnitAccess) => ({
+      user.unitAccess.length > 0
+        ? user.unitAccess.map((entry: LegacyUnitAccess) => ({
             id: entry.unit.id,
             name: entry.unit.name,
+            code: entry.unit.code,
             city: entry.unit.addressId ? entry.unit.address?.city ?? "Sem cidade" : "Sem cidade",
+            status: entry.unit.status,
+            createdAt: entry.unit.createdAt,
+            deletedAt: entry.unit.deletedAt,
           }))
         : (
             await this.prisma.unit.findMany({
               where: {
-                tenantId: currentUser.tenantId,
+                tenantId: user.tenantId,
                 deletedAt: null,
               },
               orderBy: { createdAt: "asc" },
-              take: 20,
+              take: 50,
               include: {
                 address: true,
               },
             })
-          ).map((unit: TenantUnit) => ({
+          ).map((unit) => ({
             id: unit.id,
             name: unit.name,
+            code: unit.code,
             city: unit.address?.city ?? "Sem cidade",
+            status: unit.status,
+            createdAt: unit.createdAt,
+            deletedAt: unit.deletedAt,
           }));
 
     if (units.length === 0) {
       throw new ForbiddenException("Usuario sem unidade disponivel.");
     }
 
-    const primaryRoleCode = currentUser.userRoles[0]?.role.code ?? "assistant";
-
     return {
       user: {
-        id: currentUser.id,
-        name: currentUser.fullName,
-        email: currentUser.email,
-        role: this.mapRole(primaryRoleCode),
+        id: user.id,
+        tenantId: user.tenantId,
+        fullName: user.fullName,
+        email: user.email,
+        status: user.status,
+      },
+      tenant: {
+        id: user.tenant.id,
+        legalName: user.tenant.legalName,
+        tradeName: user.tenant.tradeName,
+        status: user.tenant.status,
+        subscriptionPlanCode: user.tenant.subscriptionPlanCode,
       },
       units,
-      currentUnitId: units[0].id,
-      permissions,
+      primaryRoleCode: this.normalizeAppRole(user.userRoles[0]?.role.code),
     };
   }
 
-  private mapRole(roleCode: string) {
-    switch (roleCode) {
-      case "admin":
-        return "admin";
-      case "physician":
-        return "physician";
-      case "nutritionist":
-        return "nutritionist";
-      case "reception":
-        return "reception";
-      case "sales":
-        return "sales";
-      case "nursing":
-        return "nursing";
-      case "financial":
-        return "financial";
-      default:
-        return "assistant";
+  private async acceptPendingInvitationForAuthUser(
+    authUser: SupabaseUser,
+    authEmail: string
+  ) {
+    const { data, error } = await supabaseAdmin.rpc("accept_team_invitation_for_auth_user", {
+      p_auth_user_id: authUser.id,
+      p_email: authEmail,
+      p_full_name: this.resolveFullNameFromAuthUser(authUser),
+      p_phone: authUser.phone ?? null,
+    });
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `Falha ao aceitar convite pendente: ${error.message}`
+      );
+    }
+
+    return Boolean(
+      data &&
+        typeof data === "object" &&
+        "accepted" in data &&
+        (data as { accepted?: unknown }).accepted === true
+    );
+  }
+
+  private async ensureSupabaseAccessProjection(
+    authUser: SupabaseUser,
+    legacySnapshot: LegacyAuthSnapshot
+  ) {
+    const { error } = await supabaseAdmin.rpc("upsert_legacy_auth_projection", {
+      p_auth_user_id: authUser.id,
+      p_email: legacySnapshot.user.email,
+      p_full_name: legacySnapshot.user.fullName,
+      p_phone: authUser.phone ?? null,
+      p_user_status: legacySnapshot.user.status,
+      p_legacy_user_id: legacySnapshot.user.id,
+      p_legacy_tenant_id: legacySnapshot.tenant.id,
+      p_legacy_tenant_legal_name: legacySnapshot.tenant.legalName,
+      p_legacy_tenant_trade_name: legacySnapshot.tenant.tradeName,
+      p_legacy_tenant_status: legacySnapshot.tenant.status,
+      p_subscription_plan_code: legacySnapshot.tenant.subscriptionPlanCode,
+      p_app_role_code: legacySnapshot.primaryRoleCode,
+      p_units: legacySnapshot.units.map((unit) => ({
+        id: unit.id,
+        name: unit.name,
+        code: unit.code,
+        city: unit.city,
+        status: unit.status,
+        deletedAt: unit.deletedAt?.toISOString() ?? null,
+      })),
+    });
+
+    if (error) {
+      throw new InternalServerErrorException(
+        `Falha ao sincronizar projecao legacy -> Supabase: ${error.message}`
+      );
     }
   }
 
-  private mapPermissions(codes: string[]): AppPermission[] {
-    const mapped = new Set<AppPermission>();
+  private async fetchRuntimeSession(accessToken: string): Promise<RuntimeAppSession> {
+    const requestClient = createSupabaseRequestClient(accessToken);
+    const { data, error } = await requestClient.rpc("current_app_session");
 
-    if (codes.includes("platform.read")) {
-      mapped.add("dashboard:view");
-      mapped.add("settings:view");
+    if (error) {
+      throw new ForbiddenException(`Falha ao montar sessao runtime: ${error.message}`);
     }
 
-    if (codes.includes("patients.read")) mapped.add("patients:view");
-    if (codes.includes("patients.write")) mapped.add("patients:write");
+    return this.normalizeRuntimeSession(data);
+  }
 
-    if (codes.includes("schedule.read")) mapped.add("schedule:view");
-    if (codes.includes("schedule.write")) mapped.add("schedule:write");
+  private async tryFetchRuntimeSession(accessToken: string) {
+    try {
+      return await this.fetchRuntimeSession(accessToken);
+    } catch {
+      return null;
+    }
+  }
 
-    if (codes.includes("crm.read")) mapped.add("crm:view");
-    if (codes.includes("crm.write")) mapped.add("crm:write");
+  private async toLegacyCompatibleSession(
+    runtimeSession: RuntimeAppSession,
+    legacySnapshot: LegacyAuthSnapshot
+  ): Promise<AppSessionPayload> {
+    return {
+      tenantId: runtimeSession.tenantId || legacySnapshot.tenant.id,
+      user: {
+        id: runtimeSession.user.id || legacySnapshot.user.id,
+        name: runtimeSession.user.name || legacySnapshot.user.fullName,
+        email: runtimeSession.user.email || legacySnapshot.user.email,
+        role: runtimeSession.user.role,
+      },
+      units:
+        runtimeSession.units.length > 0
+          ? runtimeSession.units
+          : legacySnapshot.units.map((unit) => ({
+              id: unit.id,
+              name: unit.name,
+              city: unit.city,
+            })),
+      currentUnitId:
+        runtimeSession.currentUnitId ||
+        runtimeSession.accessibleUnitIds[0] ||
+        legacySnapshot.units[0].id,
+      accessibleUnitIds:
+        runtimeSession.accessibleUnitIds.length > 0
+          ? runtimeSession.accessibleUnitIds
+          : legacySnapshot.units.map((unit) => unit.id),
+      permissions: runtimeSession.permissions,
+    };
+  }
 
-    if (codes.includes("clinical.read")) mapped.add("clinical:view");
-    if (codes.includes("clinical.write")) mapped.add("clinical:write");
+  private toRuntimeCompatibleSession(
+    runtimeSession: RuntimeAppSession,
+    authUser: SupabaseUser
+  ): AppSessionPayload {
+    return {
+      tenantId: runtimeSession.tenantId,
+      user: {
+        id: runtimeSession.user.id || authUser.id,
+        name: runtimeSession.user.name || this.resolveFullNameFromAuthUser(authUser),
+        email: runtimeSession.user.email || authUser.email?.trim().toLowerCase() || "",
+        role: runtimeSession.user.role,
+      },
+      units: runtimeSession.units,
+      currentUnitId: runtimeSession.currentUnitId,
+      accessibleUnitIds: runtimeSession.accessibleUnitIds,
+      permissions: runtimeSession.permissions,
+    };
+  }
+
+  private normalizeRuntimeSession(value: unknown): RuntimeAppSession {
+    if (!value || typeof value !== "object") {
+      throw new InternalServerErrorException("Sessao runtime invalida.");
+    }
+
+    const record = value as Record<string, unknown>;
+    const userRecord =
+      record.user && typeof record.user === "object"
+        ? (record.user as Record<string, unknown>)
+        : null;
+    const runtimeUnits = Array.isArray(record.units) ? record.units : [];
+    const accessibleUnitIds = Array.isArray(record.accessibleUnitIds)
+      ? record.accessibleUnitIds
+      : [];
+    const permissions = Array.isArray(record.permissions) ? record.permissions : [];
+
+    const units = runtimeUnits
+      .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
+      .map((entry) => ({
+        id: this.normalizeString(entry.id),
+        name: this.normalizeString(entry.name),
+        city: this.normalizeString(entry.city) || "Sem cidade",
+      }))
+      .filter((unit): unit is RuntimeUnitSession => Boolean(unit.id && unit.name));
+
+    const normalizedPermissions = this.uniquePermissions(
+      permissions
+        .map((entry) => this.normalizeString(entry))
+        .filter((entry): entry is AppSessionPayload["permissions"][number] =>
+          APP_PERMISSIONS.includes(entry as AppSessionPayload["permissions"][number])
+        )
+    );
+
+    const normalizedAccessibleUnitIds = this.uniqueStrings(
+      accessibleUnitIds
+        .map((entry) => this.normalizeString(entry))
+        .filter((entry): entry is string => Boolean(entry))
+    );
+
+    const normalizedRole = this.normalizeAppRole(userRecord?.role);
+
+    const currentUnitId =
+      this.normalizeString(record.currentUnitId) ??
+      normalizedAccessibleUnitIds[0] ??
+      units[0]?.id ??
+      "";
 
     if (
-      codes.includes("roles.read") ||
-      codes.includes("users.read") ||
-      codes.includes("audit.read")
+      !record.tenantId ||
+      !userRecord ||
+      (normalizedAccessibleUnitIds.length === 0 && normalizedRole !== "patient")
     ) {
-      mapped.add("settings:view");
+      throw new ForbiddenException("Sessao runtime incompleta para o usuario autenticado.");
     }
 
-    return [...mapped];
+    return {
+      tenantId: this.normalizeString(record.tenantId) ?? "",
+      user: {
+        id: this.normalizeString(userRecord.id) ?? "",
+        name: this.normalizeString(userRecord.name) ?? "",
+        email: this.normalizeString(userRecord.email) ?? "",
+        role: normalizedRole,
+      },
+      units,
+      currentUnitId,
+      accessibleUnitIds: normalizedAccessibleUnitIds,
+      permissions: normalizedPermissions,
+    };
+  }
+
+  private normalizeAppRole(value: unknown): AppRole {
+    const role = this.normalizeString(value);
+    return APP_ROLES.includes(role as AppRole) ? (role as AppRole) : "assistant";
+  }
+
+  private normalizeString(value: unknown) {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  private uniqueStrings(values: string[]) {
+    return Array.from(new Set(values));
+  }
+
+  private uniquePermissions(values: AppSessionPayload["permissions"]) {
+    return Array.from(new Set(values));
+  }
+
+  private resolveFullNameFromAuthUser(authUser: SupabaseUser) {
+    const metadata = authUser.user_metadata;
+    const candidates = [
+      metadata?.full_name,
+      metadata?.name,
+      metadata?.display_name,
+      authUser.email?.split("@")[0],
+      authUser.id,
+    ];
+
+    const selected = candidates.find(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    );
+
+    return selected?.trim() ?? "Usuario";
   }
 }

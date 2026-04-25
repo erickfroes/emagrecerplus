@@ -15,3 +15,5 @@ apps/api/dist
 
 # generated
 /generated/prisma
+.vercel
+.env*.local
