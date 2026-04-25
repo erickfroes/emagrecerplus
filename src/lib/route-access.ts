@@ -8,6 +8,7 @@ type RouteAccessRule = {
 const routeAccessRules: RouteAccessRule[] = [
   { prefix: "/settings", permission: "settings:view" },
   { prefix: "/clinical/encounters", permission: "clinical:view" },
+  { prefix: "/clinical/documents", permission: "clinical:view" },
   { prefix: "/clinical/tasks", permission: "clinical:view" },
   { prefix: "/clinical", permission: "clinical:view" },
   { prefix: "/crm", permission: "crm:view" },
