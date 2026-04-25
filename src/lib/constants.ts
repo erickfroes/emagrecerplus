@@ -1,6 +1,7 @@
 import {
   Briefcase,
   CalendarDays,
+  FileText,
   FilePenLine,
   LayoutDashboard,
   ListTodo,
@@ -23,6 +24,7 @@ export const sidebarItems: SidebarItemConfig[] = [
   { href: "/schedule", label: "Agenda", icon: CalendarDays, permission: "schedule:view" },
   { href: "/crm", label: "CRM", icon: Briefcase, permission: "crm:view" },
   { href: "/clinical/encounters/1", label: "Atendimento Clinico", icon: FilePenLine, permission: "clinical:view" },
+  { href: "/clinical/documents", label: "Documentos", icon: FileText, permission: "clinical:view" },
   { href: "/clinical/document-layout", label: "Editor documental", icon: FilePenLine, permission: "clinical:view" },
   { href: "/clinical/tasks", label: "Tarefas", icon: ListTodo, permission: "clinical:view" },
   { href: "/settings", label: "Configuracoes", icon: Settings, permission: "settings:view" },
