@@ -2108,15 +2108,15 @@ function normalizeNullableEmail(value: string | null | undefined) {
 function buildMockDocumentTemplates(kind?: string): RuntimeDocumentTemplate[] {
   const templates: RuntimeDocumentTemplate[] = [
     {
-      id: "mock-template-report",
+      id: "11111111-1111-4111-8111-111111111111",
       title: "Relatorio de evolucao",
       description: "Modelo enxuto para registrar impressao clinica e conduta.",
       templateKind: "report",
       templateScope: "tenant",
       status: "active",
       currentVersion: {
-        id: "mock-template-report-v1",
-        runtimeId: "mock-template-report-v1",
+        id: "11111111-1111-4111-8111-111111111101",
+        runtimeId: "11111111-1111-4111-8111-111111111101",
         versionNumber: 1,
         status: "published",
         title: "Relatorio de evolucao",
@@ -2131,15 +2131,15 @@ function buildMockDocumentTemplates(kind?: string): RuntimeDocumentTemplate[] {
       },
     },
     {
-      id: "mock-template-orientation",
+      id: "22222222-2222-4222-8222-222222222222",
       title: "Orientacoes de alta",
       description: "Modelo rapido para orientacoes pos-consulta.",
       templateKind: "orientation",
       templateScope: "tenant",
       status: "active",
       currentVersion: {
-        id: "mock-template-orientation-v1",
-        runtimeId: "mock-template-orientation-v1",
+        id: "22222222-2222-4222-8222-222222222202",
+        runtimeId: "22222222-2222-4222-8222-222222222202",
         versionNumber: 1,
         status: "published",
         title: "Orientacoes de alta",
