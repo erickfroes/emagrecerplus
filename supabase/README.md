@@ -43,6 +43,18 @@ Quando houver provedor real de assinatura documental, tambem configurar:
 - `npm run runtime:seed:direct` cria fixtures minimas diretamente no runtime Supabase, sem depender do banco legado
 - `npm run runtime:seed:hybrid` preserva a trilha transicional com seed legado + backfill quando isso ainda for necessario
 
+## Broker documental
+
+- `0073_document_access_broker.sql` adiciona `docs.document_access_events`,
+  `api.list_accessible_patient_documents`,
+  `api.prepare_patient_document_access` e
+  `api.record_patient_document_access_event`; `0074_*` adiciona apenas os
+  wrappers `public.*` necessarios para compatibilidade com `supabase.rpc(...)`.
+- As RPCs sao chamadas pela API transicional com `service_role`, depois de
+  auth, permissao e unidade atual ja terem sido validadas no servidor.
+- A assinatura de URL do bucket privado continua server-side; o browser nao
+  recebe `service_role`, segredo ou caminho interno do storage.
+
 ## Regras
 
 - schemas de negocio nao devem nascer em `public`

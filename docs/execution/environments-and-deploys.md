@@ -69,6 +69,28 @@ Observacoes:
 - `runtime:seed`, `runtime:seed:direct` e `runtime:seed:hybrid` pertencem a
   trilhas Supabase-first/homologacao e exigem variaveis de runtime adequadas.
 
+## Broker de acesso documental
+
+- A listagem administrativa minima de documentos fora do encounter passa por
+  `GET /documents`, que chama a RPC `api.list_accessible_patient_documents` com
+  tenant e unidade resolvidos pela sessao da API transicional.
+- Como `supabase.rpc(...)` resolve `public` por padrao no PostgREST atual, a
+  migration `0074_*` mantem wrappers `public.*` apenas para compatibilidade; a
+  regra critica permanece nas funcoes `api.*`.
+- A geracao de acesso temporario continua exposta em
+  `GET /documents/:id/access-links`, mas a API agora primeiro valida o alvo com
+  `api.prepare_patient_document_access`, assina a URL no servidor com
+  `SUPABASE_SERVICE_ROLE_KEY` e registra a concessao em
+  `api.record_patient_document_access_event`.
+- O bucket `patient-documents` permanece privado. O frontend recebe somente
+  URLs assinadas temporarias, nome de arquivo, status e metadados seguros; o
+  caminho interno do objeto no storage nao deve ser tratado como contrato de UI.
+- A auditoria fica em `docs.document_access_events` e tambem em
+  `audit.audit_events`. Nenhuma signed URL e persistida.
+- A protecao cross-tenant ocorre em dois niveis: a API valida sessao,
+  permissao e unidade atual antes de chamar o broker; as RPCs resolvem o tenant
+  runtime a partir do tenant legado e so aceitam documentos daquele tenant.
+
 ## Pipeline oficial no repositorio
 
 - [ci-smokes.yml](../../.github/workflows/ci-smokes.yml): roda em `pull_request`, `push` para `main` e `staging`, e `workflow_dispatch`

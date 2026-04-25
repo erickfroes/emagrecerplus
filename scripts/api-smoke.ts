@@ -988,6 +988,13 @@ async function main() {
         "patients sem token deveria retornar 401 quando auth real estiver habilitado."
       );
 
+      const protectedDocumentsWithoutToken = await fetch(`${baseUrl}/documents`);
+      assert.equal(
+        protectedDocumentsWithoutToken.status,
+        401,
+        "documents sem token deveria retornar 401 quando auth real estiver habilitado."
+      );
+
       const invalidUnitResponse = await fetch(`${baseUrl}/appointments`, {
         headers: {
           Authorization: `Bearer ${requestAccessToken}`,
@@ -998,6 +1005,18 @@ async function main() {
         invalidUnitResponse.status,
         403,
         "appointments com unidade fora do escopo deveria retornar 403."
+      );
+
+      const invalidUnitDocumentsResponse = await fetch(`${baseUrl}/documents`, {
+        headers: {
+          Authorization: `Bearer ${requestAccessToken}`,
+          "x-current-unit-id": "unit-inexistente-smoke",
+        },
+      });
+      assert.equal(
+        invalidUnitDocumentsResponse.status,
+        403,
+        "documents com unidade fora do escopo deveria retornar 403."
       );
     }
 
@@ -3447,6 +3466,87 @@ async function main() {
       Boolean(documentWithArtifact.currentVersion?.renderedHtml),
       "POST /documents/:id/printable-artifacts nao preencheu o renderedHtml da versao atual."
     );
+
+    const listedDocuments = await requestJson<{
+      items: Array<{
+        id: string;
+        title: string;
+        patient?: { id?: string; name?: string } | null;
+        printableArtifacts?: Array<{
+          id: string;
+          artifactKind: string;
+          hasStorageObject?: boolean;
+        }>;
+      }>;
+      total: number;
+      limit: number;
+      offset: number;
+    }>(`/documents?patientId=${encodeURIComponent(createdPatient.id)}&status=issued`);
+
+    assert(Array.isArray(listedDocuments.items), "GET /documents nao retornou items.");
+    assert(typeof listedDocuments.total === "number", "GET /documents nao retornou total numerico.");
+    assert(typeof listedDocuments.limit === "number", "GET /documents nao retornou limit numerico.");
+    assert(typeof listedDocuments.offset === "number", "GET /documents nao retornou offset numerico.");
+
+    if (isRealAuthEnabled()) {
+      const listedDocument = listedDocuments.items.find((item) => item.id === createdDocument.id);
+      assert(listedDocument, "GET /documents nao retornou o documento emitido fora do encounter.");
+      assert.equal(
+        listedDocument?.title,
+        createdDocument.title,
+        "GET /documents retornou titulo documental inesperado."
+      );
+      assert(
+        listedDocument?.printableArtifacts?.some(
+          (artifact) => artifact.artifactKind === "preview" && artifact.hasStorageObject
+        ),
+        "GET /documents nao refletiu o artefato armazenado para acesso seguro."
+      );
+    }
+
+    const documentAccessLinks = await requestJson<{
+      documentId: string;
+      generatedAt: string;
+      expiresAt: string;
+      currentVersion?: {
+        openUrl: string;
+        downloadUrl: string;
+        storageObjectPath?: string;
+      } | null;
+      artifacts: Array<{
+        id: string;
+        artifactKind: string | null;
+        openUrl: string;
+        downloadUrl: string;
+        expiresAt: string;
+        storageObjectPath?: string;
+      }>;
+    }>(`/documents/${createdDocument.id}/access-links`);
+
+    assert.equal(
+      documentAccessLinks.documentId,
+      createdDocument.id,
+      "GET /documents/:id/access-links retornou documento inesperado."
+    );
+    assert(documentAccessLinks.generatedAt, "GET /documents/:id/access-links nao retornou generatedAt.");
+    assert(documentAccessLinks.expiresAt, "GET /documents/:id/access-links nao retornou expiresAt.");
+    assert(Array.isArray(documentAccessLinks.artifacts), "GET /documents/:id/access-links nao retornou artifacts.");
+    assert(
+      documentAccessLinks.artifacts.some(
+        (artifact) =>
+          artifact.artifactKind === "preview" &&
+          typeof artifact.openUrl === "string" &&
+          typeof artifact.downloadUrl === "string" &&
+          !("storageObjectPath" in artifact)
+      ),
+      "GET /documents/:id/access-links nao retornou link temporario seguro para o preview."
+    );
+    if (documentAccessLinks.currentVersion) {
+      assert(
+        !("storageObjectPath" in documentAccessLinks.currentVersion),
+        "GET /documents/:id/access-links nao deve expor storageObjectPath da versao atual."
+      );
+    }
 
     const documentWithSignatureRequest = await requestJson<{
       id: string;

@@ -9,7 +9,6 @@ export type EncounterDocumentAccessLink = {
   label: string;
   openUrl: string;
   renderStatus: string | null;
-  storageObjectPath: string;
 };
 
 export type EncounterDocumentAccessLinksResponse = {

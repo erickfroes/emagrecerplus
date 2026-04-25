@@ -25,7 +25,11 @@ import {
   dispatchRuntimeDocumentSignatureRequest,
   getRuntimeEncounterDocumentSnapshot,
   issueRuntimeEncounterDocument,
+  listRuntimeAccessiblePatientDocuments,
   listRuntimeDocumentTemplates,
+  prepareRuntimeDocumentAccess,
+  recordRuntimeDocumentAccessEvent,
+  type RuntimeDocumentAccessTarget,
   type RuntimeDocumentTemplate,
 } from "../../common/runtime/runtime-document-writes.ts";
 import { recordRuntimePrescription } from "../../common/runtime/runtime-prescription-writes.ts";
@@ -165,7 +169,14 @@ type DocumentAccessLink = {
   label: string;
   openUrl: string;
   renderStatus: string | null;
-  storageObjectPath: string;
+};
+
+type ListDocumentsQuery = {
+  patientId?: string;
+  status?: string;
+  documentType?: string;
+  limit?: string | number;
+  offset?: string | number;
 };
 
 @Injectable()
@@ -995,6 +1006,42 @@ export class ClinicalService {
     }
   }
 
+  async listDocuments(params: ListDocumentsQuery, context?: AppRequestContext) {
+    const tenantId = await resolveTenantIdForRequest(this.prisma, context);
+    const currentUnitId = await resolveUnitIdForRequest(
+      this.prisma,
+      context,
+      process.env.DEFAULT_UNIT_CODE
+    );
+
+    const limit = normalizeDocumentListNumber(params.limit, 50, 1, 100);
+    const offset = normalizeDocumentListNumber(params.offset, 0, 0, 10000);
+
+    if (!this.isRealAuthEnabled()) {
+      return {
+        items: [],
+        total: 0,
+        limit,
+        offset,
+      };
+    }
+
+    try {
+      return await listRuntimeAccessiblePatientDocuments({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        patientId: params.patientId,
+        status: params.status,
+        documentType: params.documentType,
+        limit,
+        offset,
+      });
+    } catch (error) {
+      console.error("[runtime:read] Falha ao listar documentos acessiveis.", error);
+      throw new BadRequestException("Nao foi possivel listar os documentos acessiveis.");
+    }
+  }
+
   async getDocumentAccessLinks(documentId: string, context?: AppRequestContext) {
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
@@ -1028,24 +1075,24 @@ export class ClinicalService {
         legacyUnitId: currentUnitId,
         documentReference: documentId,
       });
+      const actorUserId = await resolveActorUserIdForRequest(this.prisma, context);
 
       const currentVersionPath =
         document.currentVersion?.signedStorageObjectPath ?? document.currentVersion?.storageObjectPath;
       const currentVersionLink = currentVersionPath
-        ? await this.createSignedDocumentAccessLink({
-            artifactId: document.currentVersion?.id ?? document.id,
-            artifactKind: "document_version",
+        ? await this.createAuditedSignedDocumentAccessLink({
+            artifactReference: null,
+            documentReference: document.id,
             expiresAt,
             expiresInSeconds,
-            fileName: buildDocumentArtifactFileName(
-              document.title,
-              document.documentType,
-              currentVersionPath,
-              "documento"
-            ),
             label: document.signedAt ? "Documento assinado" : "Versao atual",
-            renderStatus: document.currentVersion?.status ?? document.status,
-            storageObjectPath: currentVersionPath,
+            legacyActorUserId: actorUserId,
+            legacyTenantId: tenantId,
+            legacyUnitId: currentUnitId,
+            preferredFileNameLabel: "documento",
+            responseArtifactKind: "document_version",
+            responseArtifactId: document.currentVersion?.id ?? document.id,
+            responseRenderStatus: document.currentVersion?.status ?? document.status,
           })
         : null;
 
@@ -1056,20 +1103,19 @@ export class ClinicalService {
               return null;
             }
 
-            return this.createSignedDocumentAccessLink({
-              artifactId: artifact.id,
-              artifactKind: artifact.artifactKind,
+            return this.createAuditedSignedDocumentAccessLink({
+              artifactReference: artifact.id,
+              documentReference: document.id,
               expiresAt,
               expiresInSeconds,
-              fileName: buildDocumentArtifactFileName(
-                document.title,
-                artifact.artifactKind,
-                artifact.storageObjectPath,
-                "artefato"
-              ),
               label: buildDocumentArtifactLabel(artifact.artifactKind),
-              renderStatus: artifact.renderStatus,
-              storageObjectPath: artifact.storageObjectPath,
+              legacyActorUserId: actorUserId,
+              legacyTenantId: tenantId,
+              legacyUnitId: currentUnitId,
+              preferredFileNameLabel: "artefato",
+              responseArtifactKind: artifact.artifactKind,
+              responseArtifactId: artifact.id,
+              responseRenderStatus: artifact.renderStatus,
             });
           })
         )
@@ -1441,51 +1487,137 @@ export class ClinicalService {
     };
   }
 
-  private async createSignedDocumentAccessLink(params: {
-    artifactId: string;
-    artifactKind: string | null;
+  private async createAuditedSignedDocumentAccessLink(params: {
+    artifactReference: string | null;
+    documentReference: string;
     expiresAt: string;
     expiresInSeconds: number;
-    fileName: string;
     label: string;
-    renderStatus: string | null;
-    storageObjectPath: string;
+    legacyActorUserId: string | null;
+    legacyTenantId: string;
+    legacyUnitId: string;
+    preferredFileNameLabel: string;
+    responseArtifactId: string;
+    responseArtifactKind: string | null;
+    responseRenderStatus: string | null;
   }): Promise<DocumentAccessLink> {
+    const accessTarget = await prepareRuntimeDocumentAccess({
+      legacyTenantId: params.legacyTenantId,
+      legacyUnitId: params.legacyUnitId,
+      documentReference: params.documentReference,
+      artifactReference: params.artifactReference,
+    });
+    const fileName = buildDocumentArtifactFileName(
+      accessTarget.documentTitle,
+      accessTarget.artifactKind ?? accessTarget.documentType,
+      accessTarget.storageObjectPath,
+      params.preferredFileNameLabel
+    );
     const [openResult, downloadResult] = await Promise.all([
-      supabaseAdmin.storage.from("patient-documents").createSignedUrl(
-        params.storageObjectPath,
+      supabaseAdmin.storage.from(accessTarget.storageBucket).createSignedUrl(
+        accessTarget.storageObjectPath,
         params.expiresInSeconds
       ),
-      supabaseAdmin.storage.from("patient-documents").createSignedUrl(
-        params.storageObjectPath,
+      supabaseAdmin.storage.from(accessTarget.storageBucket).createSignedUrl(
+        accessTarget.storageObjectPath,
         params.expiresInSeconds,
-        { download: params.fileName }
+        { download: fileName }
       ),
     ]);
 
     if (openResult.error) {
+      await this.recordDocumentAccessStorageError(accessTarget, params, "open");
       throw new Error(
-        `Falha ao gerar signed URL inline para ${params.storageObjectPath}: ${openResult.error.message}`
+        `Falha ao gerar signed URL inline para ${accessTarget.storageObjectPath}: ${openResult.error.message}`
       );
     }
 
     if (downloadResult.error) {
+      await this.recordDocumentAccessStorageError(accessTarget, params, "download");
       throw new Error(
-        `Falha ao gerar signed URL de download para ${params.storageObjectPath}: ${downloadResult.error.message}`
+        `Falha ao gerar signed URL de download para ${accessTarget.storageObjectPath}: ${downloadResult.error.message}`
       );
     }
 
+    await recordRuntimeDocumentAccessEvent({
+      accessAction: "open",
+      accessStatus: "granted",
+      artifactReference: accessTarget.printableArtifactId,
+      documentReference: accessTarget.documentId,
+      documentVersionReference: accessTarget.documentVersionId,
+      legacyActorUserId: params.legacyActorUserId,
+      legacyTenantId: params.legacyTenantId,
+      legacyUnitId: params.legacyUnitId,
+      signedUrlExpiresAt: params.expiresAt,
+      storageBucket: accessTarget.storageBucket,
+      storageObjectPath: accessTarget.storageObjectPath,
+      metadata: {
+        targetKind: accessTarget.targetKind,
+        artifactKind: accessTarget.artifactKind,
+      },
+    });
+
+    await recordRuntimeDocumentAccessEvent({
+      accessAction: "download",
+      accessStatus: "granted",
+      artifactReference: accessTarget.printableArtifactId,
+      documentReference: accessTarget.documentId,
+      documentVersionReference: accessTarget.documentVersionId,
+      legacyActorUserId: params.legacyActorUserId,
+      legacyTenantId: params.legacyTenantId,
+      legacyUnitId: params.legacyUnitId,
+      signedUrlExpiresAt: params.expiresAt,
+      storageBucket: accessTarget.storageBucket,
+      storageObjectPath: accessTarget.storageObjectPath,
+      metadata: {
+        targetKind: accessTarget.targetKind,
+        artifactKind: accessTarget.artifactKind,
+      },
+    });
+
     return {
-      id: params.artifactId,
-      artifactKind: params.artifactKind,
+      id: params.responseArtifactId || accessTarget.id,
+      artifactKind: params.responseArtifactKind ?? accessTarget.artifactKind,
       downloadUrl: downloadResult.data.signedUrl,
       expiresAt: params.expiresAt,
-      fileName: params.fileName,
+      fileName,
       label: params.label,
       openUrl: openResult.data.signedUrl,
-      renderStatus: params.renderStatus,
-      storageObjectPath: params.storageObjectPath,
+      renderStatus: params.responseRenderStatus ?? accessTarget.renderStatus,
     };
+  }
+
+  private async recordDocumentAccessStorageError(
+    accessTarget: RuntimeDocumentAccessTarget,
+    params: {
+      expiresAt: string;
+      legacyActorUserId: string | null;
+      legacyTenantId: string;
+      legacyUnitId: string;
+    },
+    accessAction: "open" | "download"
+  ) {
+    try {
+      await recordRuntimeDocumentAccessEvent({
+        accessAction,
+        accessStatus: "storage_error",
+        artifactReference: accessTarget.printableArtifactId,
+        documentReference: accessTarget.documentId,
+        documentVersionReference: accessTarget.documentVersionId,
+        legacyActorUserId: params.legacyActorUserId,
+        legacyTenantId: params.legacyTenantId,
+        legacyUnitId: params.legacyUnitId,
+        signedUrlExpiresAt: params.expiresAt,
+        storageBucket: accessTarget.storageBucket,
+        storageObjectPath: accessTarget.storageObjectPath,
+        metadata: {
+          targetKind: accessTarget.targetKind,
+          artifactKind: accessTarget.artifactKind,
+        },
+      });
+    } catch (auditError) {
+      console.error("[runtime:read] Falha ao auditar erro de storage do broker documental.", auditError);
+    }
   }
 
   private isRealAuthEnabled() {
@@ -2330,6 +2462,21 @@ function buildMockEncounterDocumentSignatureRequest(params: {
   };
 }
 
+function normalizeDocumentListNumber(
+  value: string | number | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number
+) {
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(parsed, minimum), maximum);
+}
+
 function buildMockDocumentAccessLink(
   document: MockEncounterDocument
 ): DocumentAccessLink | null {
@@ -2360,7 +2507,6 @@ function buildMockDocumentAccessLink(
     label: document.signedAt ? "Documento assinado" : "Versao atual",
     openUrl,
     renderStatus: document.currentVersion?.status ?? document.status,
-    storageObjectPath: storageObjectPath ?? "mock-inline-html",
   };
 }
 
@@ -2391,7 +2537,6 @@ function buildMockArtifactAccessLink(
     label: buildDocumentArtifactLabel(artifact.artifactKind),
     openUrl,
     renderStatus: artifact.renderStatus,
-    storageObjectPath: artifact.storageObjectPath ?? "mock-inline-html",
   };
 }
 

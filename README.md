@@ -35,7 +35,7 @@ Leia estes arquivos antes de abrir novas frentes:
 - Editor de layout documental ativo em `/clinical/document-layout`, consumindo presets clinicos, branding por tenant, logo/footer e standards notes operacionais do runtime
 - O renderer `document-printable` agora respeita layout/branding presentes no snapshot documental e emite HTML, PDF textual e `print_package` ZIP com manifesto no prefixo privado padrao do paciente
 - O fluxo de assinatura agora registra dispatch auditavel com tentativa, payload/resposta, idempotency key, envelope externo e status visivel no encounter
-- O encounter agora expoe links seguros temporarios para abrir e baixar artefatos documentais em `GET /documents/:id/access-links`, sem expor o bucket privado diretamente no frontend
+- O broker documental em `0073_document_access_broker.sql` lista documentos acessiveis em `GET /documents` e prepara links temporarios auditados em `GET /documents/:id/access-links`, sem expor bucket privado ou `storageObjectPath` ao frontend
 - Validacao recente do slice documental: `0065_document_signature_dispatch_evidence.sql` aplicada no staging e `supabase functions deploy document-signature-dispatch` executado apos o alinhamento do dispatch
 
 ## Congelamento de arquitetura
@@ -50,8 +50,8 @@ Leia estes arquivos antes de abrir novas frentes:
 
 A proxima etapa de implementacao deve seguir esta ordem:
 
-1. Fechar as lacunas remanescentes da Etapa 9 apos o slice de dispatch: verificacao criptografica por provedor real de assinatura, evidencia juridica final e centro documental administrativo
-2. Expandir o acesso seguro documental para superficies alem do detalhe do encounter e consolidar um centro documental administrativo
+1. Fechar as lacunas remanescentes da Etapa 9 apos o broker documental: verificacao criptografica por provedor real de assinatura, evidencia juridica final e centro documental administrativo
+2. Usar `GET /documents` e `GET /documents/:id/access-links` como base do centro documental administrativo, preservando auditoria e URLs assinadas temporarias
 3. Expandir o app do paciente para consumir os gates reais de comunidade, chat e retorno quando essas superficies entrarem no produto
 4. Reduzir os writes residuais ainda Prisma-first fora da trilha principal do runtime
 
