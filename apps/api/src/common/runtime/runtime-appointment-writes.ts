@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { PrismaService } from "../../prisma/prisma.service.ts";
 import { supabaseAdmin } from "../../lib/supabase-admin.ts";
 import { upsertRuntimePatientFromLegacy } from "./runtime-patient-writes.ts";
+import { isRuntimeSyncEnabled } from "./runtime-mode.ts";
 
 type ScopeResult = {
   tenantId: string;
@@ -168,13 +169,6 @@ type SyncRuntimeAppointmentProjectionOptions = {
   checkedInAt?: string | Date | null;
   canceledAt?: string | Date | null;
 };
-
-function isRuntimeSyncConfigured() {
-  return Boolean(
-    (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
-}
 
 function deterministicUuid(namespace: string, legacyId: string) {
   const hash = createHash("sha1").update(`${namespace}:${legacyId}`).digest();
@@ -511,7 +505,7 @@ export async function syncRuntimeAppointmentProjection(
   legacyAppointmentId: string,
   options: SyncRuntimeAppointmentProjectionOptions
 ) {
-  if (!isRuntimeSyncConfigured()) {
+  if (!isRuntimeSyncEnabled()) {
     return;
   }
 

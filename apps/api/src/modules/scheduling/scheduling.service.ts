@@ -30,6 +30,7 @@ import {
 } from "../../common/runtime/runtime-appointment-writes.ts";
 import { startRuntimeEncounterFromLegacy } from "../../common/runtime/runtime-encounter-writes.ts";
 import { syncPatientRuntimeProjection } from "../../common/runtime/runtime-patient-projection.ts";
+import { isApiRealAuthEnabled, isRuntimeSyncEnabled } from "../../common/runtime/runtime-mode.ts";
 import { createSupabaseRequestClient } from "../../lib/supabase-request.ts";
 import { PrismaService } from "../../prisma/prisma.service.ts";
 
@@ -1076,7 +1077,7 @@ export class SchedulingService {
     operation: () => Promise<unknown>,
     fallbackOptions: Parameters<typeof syncRuntimeAppointmentProjection>[2]
   ) {
-    if (!this.isRealAuthEnabled()) {
+    if (!this.isRuntimeSyncEnabled()) {
       return;
     }
 
@@ -1099,7 +1100,7 @@ export class SchedulingService {
     params: Parameters<typeof startRuntimeEncounterFromLegacy>[0],
     legacyPatientId: string
   ) {
-    if (!this.isRealAuthEnabled()) {
+    if (!this.isRuntimeSyncEnabled()) {
       return null;
     }
 
@@ -1120,7 +1121,7 @@ export class SchedulingService {
     legacyPatientId: string,
     options: Parameters<typeof syncRuntimeAppointmentProjection>[2]
   ) {
-    if (!this.isRealAuthEnabled()) {
+    if (!this.isRuntimeSyncEnabled()) {
       return;
     }
 
@@ -1136,7 +1137,11 @@ export class SchedulingService {
   }
 
   private isRealAuthEnabled() {
-    return (process.env.API_AUTH_MODE ?? process.env.NEXT_PUBLIC_AUTH_MODE ?? "mock") === "real";
+    return isApiRealAuthEnabled();
+  }
+
+  private isRuntimeSyncEnabled() {
+    return isRuntimeSyncEnabled();
   }
 
   private extractBearerToken(authorization?: string) {

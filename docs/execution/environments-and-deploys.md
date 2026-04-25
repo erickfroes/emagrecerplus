@@ -45,13 +45,26 @@ Observacao operacional:
    transicionais usadas pelo smoke local.
 9. Rodar `npm run typecheck`, `npm run api:typecheck`, `npm run api:build` e
    `npm run build`.
-10. Rodar `npm run api:smoke` apenas quando o Postgres local estiver disponivel,
-    com migrations e seeds aplicados.
+10. Rodar `npm run api:smoke:local` apenas quando o Postgres local estiver
+    disponivel, com migrations e seeds aplicados. O alias `npm run api:smoke`
+    aponta para esse modo local seguro.
 
 Observacoes:
 
-- `npm run api:smoke` depende do banco local em `55432`; sem Docker/Postgres
-  ativo, o check deve ser tratado como bloqueado por ambiente.
+- `npm run api:smoke:local` depende do banco local em `55432`; sem
+  Docker/Postgres ativo, o check deve ser tratado como bloqueado por ambiente.
+- `npm run api:smoke:local` forca `API_AUTH_MODE=mock`,
+  `NEXT_PUBLIC_AUTH_MODE=mock` e `API_RUNTIME_SYNC_MODE=disabled`. Ele valida
+  rotas essenciais, shapes de resposta e fluxos minimos sem exigir catalogo
+  comercial Supabase, settings runtime, RPCs, artefatos ou assinatura reais.
+- `npm run api:smoke:real` forca `API_AUTH_MODE=real`,
+  `NEXT_PUBLIC_AUTH_MODE=real` e `API_RUNTIME_SYNC_MODE=enabled`. Ele exige
+  `SUPABASE_URL` ou `NEXT_PUBLIC_SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, Postgres
+  local migrado/semeado e fixtures runtime compativeis. Esse modo continua
+  falhando em caso de catalogo comercial ausente, settings runtime quebrado,
+  RPCs Supabase indisponiveis, artefatos documentais ou assinatura inconsistentes.
+- `npm run api:smoke` e mantido como alias de `npm run api:smoke:local`.
 - `npm run frontend:auth-smoke` depende de secrets Supabase reais.
 - `runtime:seed`, `runtime:seed:direct` e `runtime:seed:hybrid` pertencem a
   trilhas Supabase-first/homologacao e exigem variaveis de runtime adequadas.
@@ -91,6 +104,10 @@ Observacoes:
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `SHADOW_DATABASE_URL`
+- `API_SMOKE_MODE`: `local` ou `real`; tambem pode ser passado como
+  `--mode=local` ou `--mode=real` para `scripts/api-smoke.ts`
+- `API_RUNTIME_SYNC_MODE`: `auto`, `enabled` ou `disabled`; em `auto`, o sync
+  runtime so fica ativo quando auth real esta habilitado
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPABASE_PUBLISHABLE_KEY`
