@@ -30,6 +30,32 @@ Observacao operacional:
 | staging | homologacao integrada | projeto Vercel `emagrece-plus-saa-s` em preview/staging | projeto Supabase oficial de staging: `sjrwhblnzsgzmhztsyqi` (`EmagreceHiper`) |
 | prod | producao | mesmo projeto Vercel, promoted deploy em `main` | projeto Supabase oficial de producao: `llxweqotzxwtsjprjlnr` (`Emagrece Med`) |
 
+## Setup local com Docker
+
+1. Copiar `.env.example` para `.env`.
+2. Manter placeholders seguros no exemplo e preencher secrets reais apenas no
+   `.env` local ou nos provedores de ambiente.
+3. Subir os bancos com `docker compose up -d`.
+4. Confirmar que o Postgres principal esta em `127.0.0.1:55432` e o shadow DB
+   esta em `127.0.0.1:55433`, alinhados a `.env.example`, Docker Compose e CI.
+5. Rodar `npm ci`.
+6. Rodar `npm run prisma:generate`.
+7. Rodar `npx prisma migrate deploy`.
+8. Rodar `npm run prisma:seed` e `npm run prisma:seed:level2` para fixtures
+   transicionais usadas pelo smoke local.
+9. Rodar `npm run typecheck`, `npm run api:typecheck`, `npm run api:build` e
+   `npm run build`.
+10. Rodar `npm run api:smoke` apenas quando o Postgres local estiver disponivel,
+    com migrations e seeds aplicados.
+
+Observacoes:
+
+- `npm run api:smoke` depende do banco local em `55432`; sem Docker/Postgres
+  ativo, o check deve ser tratado como bloqueado por ambiente.
+- `npm run frontend:auth-smoke` depende de secrets Supabase reais.
+- `runtime:seed`, `runtime:seed:direct` e `runtime:seed:hybrid` pertencem a
+  trilhas Supabase-first/homologacao e exigem variaveis de runtime adequadas.
+
 ## Pipeline oficial no repositorio
 
 - [ci-smokes.yml](../../.github/workflows/ci-smokes.yml): roda em `pull_request`, `push` para `main` e `staging`, e `workflow_dispatch`
@@ -38,7 +64,7 @@ Observacao operacional:
 ## Politica de secrets
 
 - nenhum secret sensivel entra em git
-- `.env`, `.env.*` e `.vercel` ficam fora do versionamento
+- `.env`, `.env.*` e `.vercel/` ficam fora do versionamento
 - GitHub Actions guarda os secrets de CI/CD
 - Vercel guarda variaveis de runtime de preview e producao
 - Supabase guarda chaves de projeto, banco e integracoes operacionais

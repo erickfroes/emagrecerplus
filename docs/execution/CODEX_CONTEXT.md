@@ -128,9 +128,9 @@ O que falta para fechar a etapa:
 - `apps/api` e Prisma ainda existem como ponte transicional; alguns writes
   residuais, especialmente lead e atividade, ainda projetam do legado para o
   runtime.
-- `.env.example` usa `DATABASE_URL` e `SHADOW_DATABASE_URL` em `localhost:5432`,
-  mas `docker-compose.yml` expoe Postgres nas portas host `55432` e `55433`, e o
-  CI tambem usa `55432/55433`.
+- `.env.example` foi alinhado ao setup local real, com Postgres principal em
+  `127.0.0.1:55432` e shadow DB em `127.0.0.1:55433`. O risco residual fica em
+  `.env` locais antigos que ainda apontem para `localhost:5432`.
 - `package.json` declara `packageManager` como pnpm, mas README e CI usam npm.
   Trocar gerenciador sem alinhamento pode introduzir ruido.
 - `supabase/seeds` existe, mas contem apenas `.gitkeep`; os seeds operacionais
@@ -143,30 +143,24 @@ O que falta para fechar a etapa:
 
 ## Inconsistencias reais encontradas
 
-- `docs/execution/gap-analysis.md` esta parcialmente antigo: ainda afirma que
-  nao existe workspace Supabase oficial, schemas `api/private`, RLS versionada,
-  `audit.audit_events` e `audit.patient_timeline_events`, mas esses itens aparecem
-  como materializados no checklist e nas migrations atuais.
-- O mesmo `gap-analysis.md` menciona `src/modules/patient-app/state/patient-app-store.ts`
-  como fonte persistida em Zustand, mas esse arquivo foi removido e o app do
-  paciente usa backend real.
-- `docs/fusion/module-matrix.md` ainda descreve financeiro serio, billing SaaS e
-  documentos/prescricoes como ausentes, parciais ou futuros; o checklist atual
-  registra Etapa 10 concluida e Etapa 9 avancada ate dispatch auditavel.
-- `.env.example` e `docker-compose.yml` divergem nas portas locais do Postgres.
+- `docs/execution/gap-analysis.md` foi reconciliado para separar gaps resolvidos,
+  parcialmente resolvidos, bloqueantes atuais, melhorias futuras e itens
+  obsoletos/substituidos.
+- `docs/fusion/module-matrix.md` foi atualizado nos pontos em que o estado real
+  ja tinha runtime comercial, financeiro, billing SaaS, app do paciente real,
+  documentos/prescricoes e seeds operacionais em scripts.
+- `.env.example`, README, environments e `.gitignore` foram alinhados ao setup
+  local Docker e ao ignore explicito de `.vercel/`.
 - `supabase/.temp` esta versionado no estado sincronizado. Nao ha secret lido
   ali nesta tarefa, mas nao adicionar credenciais ou tokens a essa area.
 
 ## Proxima sequencia recomendada
 
-1. Fazer uma tarefa docs-only para reconciliar `gap-analysis.md`,
-   `module-matrix.md` e a divergencia de portas em `.env.example`, sem mexer em
-   dominio clinico.
-2. Na Etapa 9, implementar a verificacao criptografica de assinatura com provedor
+1. Na Etapa 9, implementar a verificacao criptografica de assinatura com provedor
    real e consolidar a evidencia juridica final no runtime Supabase.
-3. Criar ou consolidar o centro documental administrativo com download seguro de
+2. Criar ou consolidar o centro documental administrativo com download seguro de
    artefatos fora do detalhe do encounter.
-4. Continuar reduzindo writes Prisma-first residuais, principalmente CRM/lead
+3. Continuar reduzindo writes Prisma-first residuais, principalmente CRM/lead
    activity, sempre registrando o lado transicional e o alvo Supabase.
 
 ## Checks esperados por tipo de mudanca

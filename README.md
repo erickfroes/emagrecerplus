@@ -57,6 +57,25 @@ A proxima etapa de implementacao deve seguir esta ordem:
 
 ## Desenvolvimento local
 
+- Setup local com Docker:
+  1. Copie `.env.example` para `.env` e mantenha secrets reais apenas no arquivo
+     local nao versionado.
+  2. Suba os bancos locais com `docker compose up -d`. O Postgres principal usa
+     `127.0.0.1:55432` e o shadow DB usa `127.0.0.1:55433`.
+  3. Instale dependencias com `npm ci`.
+  4. Gere o Prisma client com `npm run prisma:generate`.
+  5. Aplique migrations locais com `npx prisma migrate deploy`.
+  6. Carregue fixtures transicionais com `npm run prisma:seed` e
+     `npm run prisma:seed:level2`.
+  7. Rode os checks de base com `npm run typecheck`, `npm run api:typecheck`,
+     `npm run api:build` e `npm run build`.
+  8. Rode `npm run api:smoke` somente com o Postgres local ativo, migrations
+     aplicadas e seeds carregados.
+- Os scripts `runtime:seed`, `runtime:seed:direct` e `runtime:seed:hybrid`
+  existem para a trilha Supabase-first/homologacao e dependem das variaveis de
+  runtime apropriadas.
+- `npm run frontend:auth-smoke` depende de secrets Supabase reais disponiveis no
+  ambiente.
 - `npm run dev` sobe frontend e API juntos para evitar `ERR_CONNECTION_REFUSED` em `http://localhost:3001`
 - `npm run dev` agora tambem falha cedo com mensagem clara se `3000` ou `3001` ja estiverem ocupadas
 - `npm run dev:stop` encerra listeners presos nas portas `3000` e `3001` no Windows
