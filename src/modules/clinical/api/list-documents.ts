@@ -57,6 +57,9 @@ export type ClinicalDocumentListParams = {
   patientId?: string;
   status?: string;
   documentType?: string;
+  signatureStatus?: string;
+  issuedFrom?: string;
+  issuedTo?: string;
   limit?: number;
   offset?: number;
 };

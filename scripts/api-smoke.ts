@@ -333,6 +333,9 @@ async function assertDirectDocumentBrokerRpcDenied(params: {
     p_document_type: null,
     p_limit: 10,
     p_offset: 0,
+    p_signature_status: null,
+    p_issued_from: null,
+    p_issued_to: null,
   });
 
   assertDirectDocumentBrokerRpcRejected(`${params.label}: list_accessible_patient_documents`, listResult);
@@ -3531,6 +3534,7 @@ async function main() {
       items: Array<{
         id: string;
         title: string;
+        issuedAt?: string | null;
         patient?: { id?: string; name?: string } | null;
         printableArtifacts?: Array<{
           id: string;
@@ -3548,6 +3552,12 @@ async function main() {
     assert(typeof listedDocuments.limit === "number", "GET /documents nao retornou limit numerico.");
     assert(typeof listedDocuments.offset === "number", "GET /documents nao retornou offset numerico.");
 
+    await requestJson(
+      `/documents?issuedFrom=${encodeURIComponent("not-a-date")}`,
+      undefined,
+      400
+    );
+
     if (isRealAuthEnabled()) {
       const listedDocument = listedDocuments.items.find((item) => item.id === createdDocument.id);
       assert(listedDocument, "GET /documents nao retornou o documento emitido fora do encounter.");
@@ -3561,6 +3571,35 @@ async function main() {
           (artifact) => artifact.artifactKind === "preview" && artifact.hasStorageObject
         ),
         "GET /documents nao refletiu o artefato armazenado para acesso seguro."
+      );
+
+      const issuedFrom = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const issuedTo = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const listedDocumentsByIssuedRange = await requestJson<{
+        items: Array<{ id: string }>;
+      }>(
+        `/documents?patientId=${encodeURIComponent(createdPatient.id)}&issuedFrom=${encodeURIComponent(
+          issuedFrom
+        )}&issuedTo=${encodeURIComponent(issuedTo)}`
+      );
+
+      assert(
+        listedDocumentsByIssuedRange.items.some((item) => item.id === createdDocument.id),
+        "GET /documents com issuedFrom/issuedTo nao retornou o documento emitido."
+      );
+
+      const futureIssuedFrom = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const listedFutureDocuments = await requestJson<{
+        items: Array<{ id: string }>;
+      }>(
+        `/documents?patientId=${encodeURIComponent(createdPatient.id)}&issuedFrom=${encodeURIComponent(
+          futureIssuedFrom
+        )}`
+      );
+
+      assert(
+        !listedFutureDocuments.items.some((item) => item.id === createdDocument.id),
+        "GET /documents com issuedFrom futuro nao deveria retornar o documento emitido."
       );
     }
 
@@ -3691,6 +3730,19 @@ async function main() {
     );
 
     if (isRealAuthEnabled()) {
+      const listedDocumentsBySentSignature = await requestJson<{
+        items: Array<{ id: string }>;
+      }>(
+        `/documents?patientId=${encodeURIComponent(
+          createdPatient.id
+        )}&signatureStatus=${encodeURIComponent("sent")}`
+      );
+
+      assert(
+        listedDocumentsBySentSignature.items.some((item) => item.id === createdDocument.id),
+        "GET /documents com signatureStatus=sent nao retornou o documento com assinatura enviada."
+      );
+
       const signatureEventId = `mock-document-signature-${Date.now()}`;
       const signatureWebhook = await requestEdgeFunctionJson<{
         ok: boolean;
@@ -3809,6 +3861,19 @@ async function main() {
       assert(
         signedDocument?.printableArtifacts?.some((artifact) => artifact.artifactKind === "preview"),
         "GET /encounters/:id deveria preservar o artefato imprimivel criado antes da assinatura."
+      );
+
+      const listedDocumentsBySignedSignature = await requestJson<{
+        items: Array<{ id: string }>;
+      }>(
+        `/documents?patientId=${encodeURIComponent(
+          createdPatient.id
+        )}&signatureStatus=${encodeURIComponent("signed")}`
+      );
+
+      assert(
+        listedDocumentsBySignedSignature.items.some((item) => item.id === createdDocument.id),
+        "GET /documents com signatureStatus=signed nao retornou o documento assinado."
       );
     }
 
