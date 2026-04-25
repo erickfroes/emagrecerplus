@@ -137,12 +137,119 @@ export type CreateRuntimeDocumentPrintableArtifactInput = {
   legacyCreatedByUserId?: string | null;
 };
 
+export type ListRuntimeAccessiblePatientDocumentsInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  patientId?: string | null;
+  status?: string | null;
+  documentType?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+};
+
+export type RuntimeAccessiblePatientDocument = {
+  id: string;
+  runtimeId: string;
+  documentType: string;
+  status: string;
+  title: string;
+  summary: string | null;
+  documentNumber: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  signedAt: string | null;
+  patient: {
+    id: string;
+    runtimeId: string;
+    name: string;
+  } | null;
+  encounterId: string | null;
+  currentVersion: {
+    id: string;
+    runtimeId: string;
+    versionNumber: number;
+    status: string;
+    title: string;
+    issuedAt: string | null;
+    signedAt: string | null;
+    hasStorageObject: boolean;
+  } | null;
+  printableArtifacts: Array<{
+    id: string;
+    runtimeId: string;
+    artifactKind: string;
+    renderStatus: string;
+    renderedAt: string | null;
+    hasStorageObject: boolean;
+  }>;
+  signatureRequests: Array<{
+    id: string;
+    runtimeId: string;
+    signerType: string;
+    providerCode: string;
+    requestStatus: string;
+    requestedAt: string | null;
+    completedAt: string | null;
+  }>;
+};
+
+export type RuntimeAccessiblePatientDocumentList = {
+  items: RuntimeAccessiblePatientDocument[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type PrepareRuntimeDocumentAccessInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  artifactReference?: string | null;
+};
+
+export type RuntimeDocumentAccessTarget = {
+  id: string;
+  runtimeId: string;
+  targetKind: "document_version" | "printable_artifact";
+  documentId: string;
+  runtimeDocumentId: string;
+  documentVersionId: string | null;
+  runtimeDocumentVersionId: string | null;
+  printableArtifactId: string | null;
+  runtimePrintableArtifactId: string | null;
+  artifactKind: string;
+  renderStatus: string | null;
+  documentTitle: string;
+  documentType: string;
+  storageBucket: string;
+  storageObjectPath: string;
+};
+
+export type RecordRuntimeDocumentAccessEventInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  accessAction: "open" | "download";
+  accessStatus?: "granted" | "denied" | "storage_error";
+  artifactReference?: string | null;
+  documentVersionReference?: string | null;
+  signedUrlExpiresAt?: string | null;
+  storageBucket?: string | null;
+  storageObjectPath?: string | null;
+  legacyActorUserId?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function asStringOrNull(value: unknown) {
   return typeof value === "string" ? value : null;
+}
+
+function asBoolean(value: unknown) {
+  return value === true;
 }
 
 function parseTemplate(value: unknown): RuntimeDocumentTemplate | null {
@@ -263,6 +370,117 @@ export function parseRuntimeEncounterDocument(value: unknown): RuntimeEncounterD
   };
 }
 
+function parseAccessiblePatientDocument(value: unknown): RuntimeAccessiblePatientDocument {
+  if (!isRecord(value)) {
+    throw new Error("RPC list_accessible_patient_documents retornou item invalido.");
+  }
+
+  const patient = isRecord(value.patient)
+    ? {
+        id: String(value.patient.id ?? ""),
+        runtimeId: String(value.patient.runtimeId ?? ""),
+        name: String(value.patient.name ?? ""),
+      }
+    : null;
+
+  const currentVersion = isRecord(value.currentVersion)
+    ? {
+        id: String(value.currentVersion.id ?? ""),
+        runtimeId: String(value.currentVersion.runtimeId ?? ""),
+        versionNumber: Number(value.currentVersion.versionNumber ?? 0),
+        status: String(value.currentVersion.status ?? "draft"),
+        title: String(value.currentVersion.title ?? ""),
+        issuedAt: asStringOrNull(value.currentVersion.issuedAt),
+        signedAt: asStringOrNull(value.currentVersion.signedAt),
+        hasStorageObject: asBoolean(value.currentVersion.hasStorageObject),
+      }
+    : null;
+
+  return {
+    id: String(value.id ?? ""),
+    runtimeId: String(value.runtimeId ?? ""),
+    documentType: String(value.documentType ?? "custom"),
+    status: String(value.status ?? "draft"),
+    title: String(value.title ?? ""),
+    summary: asStringOrNull(value.summary),
+    documentNumber: asStringOrNull(value.documentNumber),
+    issuedAt: asStringOrNull(value.issuedAt),
+    expiresAt: asStringOrNull(value.expiresAt),
+    signedAt: asStringOrNull(value.signedAt),
+    patient,
+    encounterId: asStringOrNull(value.encounterId),
+    currentVersion,
+    printableArtifacts: Array.isArray(value.printableArtifacts)
+      ? value.printableArtifacts.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          artifactKind: String(item.artifactKind ?? "preview"),
+          renderStatus: String(item.renderStatus ?? "pending"),
+          renderedAt: asStringOrNull(item.renderedAt),
+          hasStorageObject: asBoolean(item.hasStorageObject),
+        }))
+      : [],
+    signatureRequests: Array.isArray(value.signatureRequests)
+      ? value.signatureRequests.filter(isRecord).map((item) => ({
+          id: String(item.id ?? ""),
+          runtimeId: String(item.runtimeId ?? ""),
+          signerType: String(item.signerType ?? "patient"),
+          providerCode: String(item.providerCode ?? "mock"),
+          requestStatus: String(item.requestStatus ?? "pending"),
+          requestedAt: asStringOrNull(item.requestedAt),
+          completedAt: asStringOrNull(item.completedAt),
+        }))
+      : [],
+  };
+}
+
+function parseAccessiblePatientDocumentList(
+  value: unknown
+): RuntimeAccessiblePatientDocumentList {
+  if (!isRecord(value)) {
+    throw new Error("RPC list_accessible_patient_documents nao retornou objeto valido.");
+  }
+
+  return {
+    items: Array.isArray(value.items) ? value.items.map(parseAccessiblePatientDocument) : [],
+    total: Number(value.total ?? 0),
+    limit: Number(value.limit ?? 50),
+    offset: Number(value.offset ?? 0),
+  };
+}
+
+function parseRuntimeDocumentAccessTarget(value: unknown): RuntimeDocumentAccessTarget {
+  if (!isRecord(value)) {
+    throw new Error("RPC prepare_patient_document_access nao retornou payload valido.");
+  }
+
+  const targetKind =
+    value.targetKind === "printable_artifact" ? "printable_artifact" : "document_version";
+  const storageObjectPath = String(value.storageObjectPath ?? "");
+
+  if (!storageObjectPath) {
+    throw new Error("RPC prepare_patient_document_access nao retornou storageObjectPath.");
+  }
+
+  return {
+    id: String(value.id ?? ""),
+    runtimeId: String(value.runtimeId ?? ""),
+    targetKind,
+    documentId: String(value.documentId ?? ""),
+    runtimeDocumentId: String(value.runtimeDocumentId ?? ""),
+    documentVersionId: asStringOrNull(value.documentVersionId),
+    runtimeDocumentVersionId: asStringOrNull(value.runtimeDocumentVersionId),
+    printableArtifactId: asStringOrNull(value.printableArtifactId),
+    runtimePrintableArtifactId: asStringOrNull(value.runtimePrintableArtifactId),
+    artifactKind: String(value.artifactKind ?? targetKind),
+    renderStatus: asStringOrNull(value.renderStatus),
+    documentTitle: String(value.documentTitle ?? "Documento"),
+    documentType: String(value.documentType ?? "custom"),
+    storageBucket: String(value.storageBucket ?? "patient-documents"),
+    storageObjectPath,
+  };
+}
+
 export async function listRuntimeDocumentTemplates(params: {
   legacyTenantId: string;
   legacyUnitId?: string | null;
@@ -283,6 +501,66 @@ export async function listRuntimeDocumentTemplates(params: {
   }
 
   return data.map(parseTemplate).filter((item): item is RuntimeDocumentTemplate => Boolean(item));
+}
+
+export async function listRuntimeAccessiblePatientDocuments(
+  params: ListRuntimeAccessiblePatientDocumentsInput
+): Promise<RuntimeAccessiblePatientDocumentList> {
+  const { data, error } = await supabaseAdmin.rpc("list_accessible_patient_documents", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_patient_id: params.patientId ?? null,
+    p_status: params.status ?? null,
+    p_document_type: params.documentType ?? null,
+    p_limit: params.limit ?? 50,
+    p_offset: params.offset ?? 0,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC list_accessible_patient_documents: ${error.message}`);
+  }
+
+  return parseAccessiblePatientDocumentList(data);
+}
+
+export async function prepareRuntimeDocumentAccess(
+  params: PrepareRuntimeDocumentAccessInput
+): Promise<RuntimeDocumentAccessTarget> {
+  const { data, error } = await supabaseAdmin.rpc("prepare_patient_document_access", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_artifact_id: params.artifactReference ?? null,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC prepare_patient_document_access: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentAccessTarget(data);
+}
+
+export async function recordRuntimeDocumentAccessEvent(
+  params: RecordRuntimeDocumentAccessEventInput
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("record_patient_document_access_event", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_access_action: params.accessAction,
+    p_access_status: params.accessStatus ?? "granted",
+    p_artifact_id: params.artifactReference ?? null,
+    p_document_version_id: params.documentVersionReference ?? null,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_signed_url_expires_at: params.signedUrlExpiresAt ?? null,
+    p_storage_bucket: params.storageBucket ?? "patient-documents",
+    p_storage_object_path: params.storageObjectPath ?? null,
+    p_legacy_actor_user_id: params.legacyActorUserId ?? null,
+    p_request_metadata: params.metadata ?? {},
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC record_patient_document_access_event: ${error.message}`);
+  }
 }
 
 export async function getRuntimeEncounterDocumentSnapshot(

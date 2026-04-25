@@ -133,6 +133,27 @@ export class ClinicalController {
     return this.clinicalService.createDocumentSignatureRequest(id, dto, context);
   }
 
+  @Get("documents")
+  listDocuments(
+    @Query("patientId") patientId?: string,
+    @Query("status") status?: string,
+    @Query("documentType") documentType?: string,
+    @Query("limit") limit?: string,
+    @Query("offset") offset?: string,
+    @AppContext() context?: AppRequestContext
+  ) {
+    return this.clinicalService.listDocuments(
+      {
+        patientId,
+        status,
+        documentType,
+        limit,
+        offset,
+      },
+      context
+    );
+  }
+
   @Get("documents/:id/access-links")
   getDocumentAccessLinks(
     @Param("id") id: string,
