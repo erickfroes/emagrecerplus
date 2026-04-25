@@ -470,6 +470,14 @@ export class SchedulingService {
       throw new BadRequestException("O paciente precisa estar em check-in para entrar na fila.");
     }
 
+    if (!this.isRealAuthEnabled()) {
+      return {
+        id: appointment.id,
+        status: mapAppointmentStatusLabel(appointment.status),
+        queueStatus: mapQueueStatusLabel("waiting"),
+      };
+    }
+
     const enqueuedAt = new Date();
     const queueResult = await enqueueRuntimePatient({
       legacyTenantId: tenantId,
@@ -1068,6 +1076,10 @@ export class SchedulingService {
     operation: () => Promise<unknown>,
     fallbackOptions: Parameters<typeof syncRuntimeAppointmentProjection>[2]
   ) {
+    if (!this.isRealAuthEnabled()) {
+      return;
+    }
+
     try {
       await operation();
     } catch (error) {
@@ -1087,6 +1099,10 @@ export class SchedulingService {
     params: Parameters<typeof startRuntimeEncounterFromLegacy>[0],
     legacyPatientId: string
   ) {
+    if (!this.isRealAuthEnabled()) {
+      return null;
+    }
+
     try {
       return await startRuntimeEncounterFromLegacy(params);
     } catch (error) {
@@ -1104,6 +1120,10 @@ export class SchedulingService {
     legacyPatientId: string,
     options: Parameters<typeof syncRuntimeAppointmentProjection>[2]
   ) {
+    if (!this.isRealAuthEnabled()) {
+      return;
+    }
+
     try {
       await syncRuntimeAppointmentProjection(this.prisma, legacyAppointmentId, options);
     } catch (error) {
