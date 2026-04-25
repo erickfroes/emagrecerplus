@@ -204,31 +204,22 @@ export class AuthService {
     return data.user;
   }
 
-  private async findLegacySnapshot(
+  private async findLegacyUserRecord(
     authUserId: string,
     authEmail: string
-  ): Promise<LegacyAuthSnapshot | null> {
-    let user = await this.prisma.user.findFirst({
+  ): Promise<LegacyUserRecord | null> {
+    const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ externalAuthId: authUserId }, { email: authEmail }],
         deletedAt: null,
       },
-      include: {
-        tenant: true,
-        unitAccess: {
-          include: {
-            unit: {
-              include: {
-                address: true,
-              },
-            },
-          },
-        },
-        userRoles: {
-          include: {
-            role: true,
-          },
-        },
+      select: {
+        id: true,
+        tenantId: true,
+        fullName: true,
+        email: true,
+        externalAuthId: true,
+        status: true,
       },
     });
 
@@ -236,31 +227,119 @@ export class AuthService {
       return null;
     }
 
+    const tenant = await this.prisma.tenant.findFirstOrThrow({
+      where: { id: user.tenantId },
+      select: {
+        id: true,
+        legalName: true,
+        tradeName: true,
+        status: true,
+        subscriptionPlanCode: true,
+      },
+    });
+
+    const unitAccessRows = await this.prisma.userUnitAccess.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: { unitId: true },
+    });
+    const unitIds = unitAccessRows.map((entry) => entry.unitId);
+    const units =
+      unitIds.length > 0
+        ? await this.prisma.unit.findMany({
+            where: { id: { in: unitIds } },
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              addressId: true,
+              status: true,
+              createdAt: true,
+              deletedAt: true,
+            },
+          })
+        : [];
+    const addressIds = units
+      .map((unit) => unit.addressId)
+      .filter((addressId): addressId is string => Boolean(addressId));
+    const addresses =
+      addressIds.length > 0
+        ? await this.prisma.address.findMany({
+            where: { id: { in: addressIds } },
+            select: { id: true, city: true },
+          })
+        : [];
+    const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+    const addressesById = new Map(addresses.map((address) => [address.id, address]));
+    const unitAccess = unitIds
+      .map((unitId) => unitsById.get(unitId))
+      .filter((unit): unit is NonNullable<typeof unit> => Boolean(unit))
+      .map((unit) => ({
+        unit: {
+          id: unit.id,
+          name: unit.name,
+          code: unit.code,
+          addressId: unit.addressId,
+          address: unit.addressId ? addressesById.get(unit.addressId) ?? null : null,
+          status: unit.status,
+          createdAt: unit.createdAt,
+          deletedAt: unit.deletedAt,
+        },
+      }));
+
+    const userRoleRows = await this.prisma.userRole.findMany({
+      where: { userId: user.id },
+      select: { roleId: true },
+    });
+    const roleIds = userRoleRows.map((entry) => entry.roleId);
+    const roles =
+      roleIds.length > 0
+        ? await this.prisma.role.findMany({
+            where: { id: { in: roleIds } },
+            select: { id: true, code: true },
+          })
+        : [];
+    const rolesById = new Map(roles.map((role) => [role.id, role]));
+    const userRoles = roleIds
+      .map((roleId) => rolesById.get(roleId))
+      .filter((role): role is NonNullable<typeof role> => Boolean(role))
+      .map((role) => ({
+        role: {
+          code: role.code,
+        },
+      }));
+
+    return {
+      ...user,
+      tenant,
+      unitAccess,
+      userRoles,
+    };
+  }
+
+  private async findLegacySnapshot(
+    authUserId: string,
+    authEmail: string
+  ): Promise<LegacyAuthSnapshot | null> {
+    let user = await this.findLegacyUserRecord(authUserId, authEmail);
+
+    if (!user) {
+      return null;
+    }
+
     if (!user.externalAuthId) {
-      user = await this.prisma.user.update({
+      await this.prisma.user.update({
         where: { id: user.id },
         data: {
           externalAuthId: authUserId,
           lastLoginAt: new Date(),
         },
-        include: {
-          tenant: true,
-          unitAccess: {
-            include: {
-              unit: {
-                include: {
-                  address: true,
-                },
-              },
-            },
-          },
-          userRoles: {
-            include: {
-              role: true,
-            },
-          },
-        },
       });
+      user = await this.findLegacyUserRecord(authUserId, authEmail);
+
+      if (!user) {
+        throw new InternalServerErrorException("Falha ao recarregar usuario legado autenticado.");
+      }
     } else {
       await this.prisma.user.update({
         where: { id: user.id },
@@ -270,38 +349,56 @@ export class AuthService {
       });
     }
 
-    const units =
-      user.unitAccess.length > 0
-        ? user.unitAccess.map((entry: LegacyUnitAccess) => ({
-            id: entry.unit.id,
-            name: entry.unit.name,
-            code: entry.unit.code,
-            city: entry.unit.addressId ? entry.unit.address?.city ?? "Sem cidade" : "Sem cidade",
-            status: entry.unit.status,
-            createdAt: entry.unit.createdAt,
-            deletedAt: entry.unit.deletedAt,
-          }))
-        : (
-            await this.prisma.unit.findMany({
-              where: {
-                tenantId: user.tenantId,
-                deletedAt: null,
-              },
-              orderBy: { createdAt: "asc" },
-              take: 50,
-              include: {
-                address: true,
-              },
+    let units = user.unitAccess.map((entry: LegacyUnitAccess) => ({
+      id: entry.unit.id,
+      name: entry.unit.name,
+      code: entry.unit.code,
+      city: entry.unit.addressId ? entry.unit.address?.city ?? "Sem cidade" : "Sem cidade",
+      status: entry.unit.status,
+      createdAt: entry.unit.createdAt,
+      deletedAt: entry.unit.deletedAt,
+    }));
+
+    if (units.length === 0) {
+      const tenantUnits = await this.prisma.unit.findMany({
+        where: {
+          tenantId: user.tenantId,
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "asc" },
+        take: 50,
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          addressId: true,
+          status: true,
+          createdAt: true,
+          deletedAt: true,
+        },
+      });
+      const addressIds = tenantUnits
+        .map((unit) => unit.addressId)
+        .filter((addressId): addressId is string => Boolean(addressId));
+      const addresses =
+        addressIds.length > 0
+          ? await this.prisma.address.findMany({
+              where: { id: { in: addressIds } },
+              select: { id: true, city: true },
             })
-          ).map((unit) => ({
-            id: unit.id,
-            name: unit.name,
-            code: unit.code,
-            city: unit.address?.city ?? "Sem cidade",
-            status: unit.status,
-            createdAt: unit.createdAt,
-            deletedAt: unit.deletedAt,
-          }));
+          : [];
+      const addressesById = new Map(addresses.map((address) => [address.id, address]));
+
+      units = tenantUnits.map((unit) => ({
+        id: unit.id,
+        name: unit.name,
+        code: unit.code,
+        city: unit.addressId ? addressesById.get(unit.addressId)?.city ?? "Sem cidade" : "Sem cidade",
+        status: unit.status,
+        createdAt: unit.createdAt,
+        deletedAt: unit.deletedAt,
+      }));
+    }
 
     if (units.length === 0) {
       throw new ForbiddenException("Usuario sem unidade disponivel.");

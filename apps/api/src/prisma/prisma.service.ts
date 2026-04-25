@@ -52,8 +52,24 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.client.unit;
   }
 
+  get address(): PrismaClientType["address"] {
+    return this.client.address;
+  }
+
   get user(): PrismaClientType["user"] {
     return this.client.user;
+  }
+
+  get role(): PrismaClientType["role"] {
+    return this.client.role;
+  }
+
+  get userRole(): PrismaClientType["userRole"] {
+    return this.client.userRole;
+  }
+
+  get userUnitAccess(): PrismaClientType["userUnitAccess"] {
+    return this.client.userUnitAccess;
   }
 
   get patient(): PrismaClientType["patient"] {
