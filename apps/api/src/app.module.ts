@@ -8,6 +8,7 @@ import { CrmModule } from "./modules/crm/crm.module.ts";
 import { DashboardModule } from "./modules/dashboard/dashboard.module.ts";
 import { PatientAppModule } from "./modules/patient-app/patient-app.module.ts";
 import { PatientsModule } from "./modules/patients/patients.module.ts";
+import { NotificationsModule } from "./modules/notifications/notifications.module.ts";
 import { SchedulingModule } from "./modules/scheduling/scheduling.module.ts";
 import { SettingsModule } from "./modules/settings/settings.module.ts";
 import { PrismaModule } from "./prisma/prisma.module.ts";
@@ -22,6 +23,7 @@ import { PrismaModule } from "./prisma/prisma.module.ts";
     SchedulingModule,
     CrmModule,
     ClinicalModule,
+    NotificationsModule,
     SettingsModule,
   ],
   controllers: [AppController],

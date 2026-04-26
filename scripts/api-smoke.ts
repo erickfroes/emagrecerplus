@@ -1033,6 +1033,18 @@ async function main() {
     assertRecord(dashboard.stats, "dashboard/summary nao retornou stats validos.");
     assert(Array.isArray(dashboard.todayAppointments), "dashboard/summary nao retornou lista de agenda.");
 
+    const notifications = await requestJson<{
+      items: unknown[];
+      total: number;
+      unreadCount: number;
+    }>("/notifications");
+    assert(Array.isArray(notifications.items), "notifications nao retornou items.");
+    assert(typeof notifications.total === "number", "notifications nao retornou total numerico.");
+    assert(
+      typeof notifications.unreadCount === "number",
+      "notifications nao retornou unreadCount numerico."
+    );
+
     const patientsList = await requestJson<{ items: unknown[]; total: number }>("/patients");
     assert(Array.isArray(patientsList.items), "patients nao retornou items.");
     assert(typeof patientsList.total === "number", "patients nao retornou total numerico.");

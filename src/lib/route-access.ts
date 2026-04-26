@@ -6,6 +6,7 @@ type RouteAccessRule = {
 };
 
 const routeAccessRules: RouteAccessRule[] = [
+  { prefix: "/notifications", permission: "notifications:view" },
   { prefix: "/settings", permission: "settings:view" },
   { prefix: "/clinical/encounters", permission: "clinical:view" },
   { prefix: "/clinical/documents", permission: "clinical:view" },
@@ -19,6 +20,7 @@ const routeAccessRules: RouteAccessRule[] = [
 
 const routeFallbacks: Array<{ href: string; permission: PermissionKey }> = [
   { href: "/dashboard", permission: "dashboard:view" },
+  { href: "/notifications", permission: "notifications:view" },
   { href: "/patients", permission: "patients:view" },
   { href: "/schedule", permission: "schedule:view" },
   { href: "/crm", permission: "crm:view" },

@@ -125,6 +125,7 @@ const APP_PERMISSIONS: AppSessionPayload["permissions"] = [
   "crm:write",
   "clinical:view",
   "clinical:write",
+  "notifications:view",
   "settings:view",
 ];
 

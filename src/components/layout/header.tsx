@@ -1,6 +1,7 @@
 "use client";
 
 import { Bell, CalendarClock, LogOut, Search } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -38,9 +39,14 @@ export function Header() {
           Operacao do dia
         </button>
 
-        <button className="rounded-2xl border border-border bg-surface p-2 text-slate-600 hover:bg-slate-50">
+        <Link
+          href="/notifications"
+          className="rounded-2xl border border-border bg-surface p-2 text-slate-600 hover:bg-slate-50"
+          aria-label="Abrir notificacoes"
+          title="Notificacoes"
+        >
           <Bell className="h-4 w-4" />
-        </button>
+        </Link>
 
         <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2">
           <div className="text-left">
