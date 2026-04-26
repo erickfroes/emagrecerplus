@@ -69,6 +69,30 @@ Observacoes:
 - `runtime:seed`, `runtime:seed:direct` e `runtime:seed:hybrid` pertencem a
   trilhas Supabase-first/homologacao e exigem variaveis de runtime adequadas.
 
+## Teste de RLS da Etapa 9
+
+- Rodar em modo local (catálogo + checks estáticos, com skip claro para recursos ausentes):
+
+  - `npm run stage9:rls -- --mode=local`
+  - usado para validação de contrato em ambientes ainda não completos
+  - permite pular verificações de runtime ausentes sem falha (com mensagem de
+    skip), inclusive objetos opcionais de evidência em bancos de desenvolvimento.
+
+- Rodar em modo real (falha forte, sem skips silenciosos em ausência de objetos de Etapa 9):
+
+  - `STAGE9_RLS_MODE=real npm run stage9:rls -- --mode=real`
+  - ou `npm run stage9:rls` após setar `STAGE9_RLS_MODE=real`
+  - exige variáveis mínimas de ambiente:
+    `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+    `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (ou equivalente de anon)
+  - exige migrations até `0080` aplicadas no banco de destino (principalmente
+    dossiê jurídico, pacote e readiness D4Sign)
+  - exige `Supabase REST` e autenticação para execução de RPCs de validação.
+
+Em modo real, o teste aborta com falha explícita se faltar função, schema, tabela
+ou contrato esperado da Etapa 9; em modo local essas ausências aparecem como
+`[skip]`.
+
 ## Broker de acesso documental
 
 - A listagem administrativa minima de documentos fora do encounter passa por

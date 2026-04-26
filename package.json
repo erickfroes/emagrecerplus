@@ -13,6 +13,7 @@
     "api:smoke": "npm run api:smoke:local",
     "api:smoke:local": "npm run api:build && npx tsx scripts/api-smoke.ts --mode=local",
     "api:smoke:real": "npm run api:build && npx tsx scripts/api-smoke.ts --mode=real",
+    "stage9:rls": "tsx scripts/stage-9-document-rls.test.ts",
     "auth:backfill": "tsx scripts/backfill-auth-projection.ts",
     "runtime:backfill": "tsx scripts/backfill-runtime-foundation.ts",
     "runtime:seed": "tsx scripts/seed-runtime-homologation.ts",
