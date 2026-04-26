@@ -121,6 +121,7 @@ export type CreateRuntimeDocumentSignatureRequestInput = {
 };
 
 export type DispatchRuntimeDocumentSignatureRequestInput = {
+  correlationId?: string | null;
   legacyTenantId: string;
   legacyUnitId?: string | null;
   documentReference: string;
@@ -1559,8 +1560,10 @@ export async function dispatchRuntimeDocumentSignatureRequest(
         Authorization: `Bearer ${serviceRoleKey}`,
         apikey: serviceRoleKey,
         "Content-Type": "application/json",
+        ...(params.correlationId ? { "x-correlation-id": params.correlationId } : {}),
       },
       body: JSON.stringify({
+        correlationId: params.correlationId ?? null,
         legacyTenantId: params.legacyTenantId,
         documentId: params.documentReference,
         signatureRequestId: params.signatureRequestId,

@@ -7,6 +7,12 @@ import {
   type DocumentSignatureProviderDescriptor,
 } from "../_shared/document-signature-provider.ts";
 import { getOptionalEnv, getRequiredEnv } from "../_shared/env.ts";
+import {
+  edgeObservabilityMetadata,
+  logEdgeDocumentOperationalEvent,
+  resolveEdgeCorrelationId,
+  safeEdgeErrorMessage,
+} from "../_shared/document-observability.ts";
 import { createEdgeServiceClient } from "../_shared/supabase.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -71,6 +77,7 @@ async function recordProviderReadiness(params: {
   legacyUnitId: string | null;
   providerPayloadHash: string | null;
   providerStatus: string;
+  correlationId: string;
   requestStatus: "pending" | "sent";
   serviceClient: ReturnType<typeof createEdgeServiceClient>;
   signatureRequestId: string;
@@ -100,6 +107,10 @@ async function recordProviderReadiness(params: {
       p_verified_at: null,
       p_provider_payload_hash: params.providerPayloadHash,
       p_metadata: {
+        ...edgeObservabilityMetadata(
+          params.correlationId,
+          "document.signature_provider_readiness_recorded",
+        ),
         adapterCode: params.descriptor.adapterCode,
         edgeFunction: "document-signature-dispatch",
         idempotencyKey: params.idempotencyKey,
@@ -111,7 +122,16 @@ async function recordProviderReadiness(params: {
   );
 
   if (error) {
-    console.error("[document-signature-dispatch] Failed to record provider readiness.", error);
+    logEdgeDocumentOperationalEvent("warn", {
+      correlationId: params.correlationId,
+      documentId: params.documentId,
+      errorMessage: safeEdgeErrorMessage(error.message),
+      event: "document.signature_provider_readiness_failed",
+      operation: "document-signature-dispatch",
+      provider: params.descriptor.providerCode,
+      providerMode: params.descriptor.providerMode,
+      signatureRequestId: params.signatureRequestId,
+    });
     return null;
   }
 
@@ -141,8 +161,17 @@ Deno.serve(async (request) => {
   }
 
   const body = await request.json().catch(() => null);
+  const correlationId = resolveEdgeCorrelationId(
+    request.headers.get("x-correlation-id"),
+    isRecord(body) ? body.correlationId : null,
+  );
   if (!isRecord(body)) {
-    return jsonResponse(request, 400, { error: "Invalid request body" });
+    logEdgeDocumentOperationalEvent("warn", {
+      correlationId,
+      event: "document.signature_dispatch_invalid_body",
+      operation: "document-signature-dispatch",
+    });
+    return jsonResponse(request, 400, { correlationId, error: "Invalid request body" });
   }
 
   const legacyTenantId = asNonEmptyString(body.legacyTenantId);
@@ -152,9 +181,19 @@ Deno.serve(async (request) => {
 
   if (!legacyTenantId || !documentId) {
     return jsonResponse(request, 400, {
+      correlationId,
       error: "legacyTenantId and documentId are required",
     });
   }
+
+  logEdgeDocumentOperationalEvent("info", {
+    correlationId,
+    documentId,
+    event: "document.signature_dispatch_received",
+    hasExplicitSignatureRequestId: Boolean(explicitSignatureRequestId),
+    legacyTenantId,
+    operation: "document-signature-dispatch",
+  });
 
   const serviceClient = createEdgeServiceClient();
   const { data: snapshotData, error: snapshotError } = await serviceClient.rpc(
@@ -167,7 +206,16 @@ Deno.serve(async (request) => {
   );
 
   if (snapshotError || !isRecord(snapshotData)) {
+    logEdgeDocumentOperationalEvent("error", {
+      correlationId,
+      documentId,
+      errorMessage: safeEdgeErrorMessage(snapshotError?.message ?? "invalid_snapshot"),
+      event: "document.signature_dispatch_snapshot_failed",
+      legacyTenantId,
+      operation: "document-signature-dispatch",
+    });
     return jsonResponse(request, 500, {
+      correlationId,
       details: snapshotError?.message ?? null,
       error: "Failed to load document snapshot for signature dispatch",
     });
@@ -176,6 +224,7 @@ Deno.serve(async (request) => {
   const signatureRequest = findSignatureRequest(snapshotData, explicitSignatureRequestId);
   if (!signatureRequest) {
     return jsonResponse(request, 404, {
+      correlationId,
       error: "Signature request not found in document snapshot",
     });
   }
@@ -184,6 +233,7 @@ Deno.serve(async (request) => {
     asNonEmptyString(signatureRequest.runtimeId) ?? asNonEmptyString(signatureRequest.id);
   if (!signatureRequestId) {
     return jsonResponse(request, 500, {
+      correlationId,
       error: "Signature request snapshot is missing runtime id",
     });
   }
@@ -208,6 +258,7 @@ Deno.serve(async (request) => {
   const dispatchPayload = {
     adapterCode: descriptor.adapterCode,
     callbackUrl,
+    correlationId,
     document: {
       id: snapshotData.runtimeId ?? snapshotData.id,
       publicId: snapshotData.id,
@@ -242,6 +293,17 @@ Deno.serve(async (request) => {
   let errorMessage: string | null = null;
 
   if (provider === "d4sign" && descriptor.providerMode === "unconfigured") {
+    logEdgeDocumentOperationalEvent("warn", {
+      adapterCode: descriptor.adapterCode,
+      correlationId,
+      documentId,
+      event: "document.signature_provider_config_missing",
+      missingConfiguration: descriptor.missingConfiguration,
+      operation: "document-signature-dispatch",
+      provider,
+      providerMode: descriptor.providerMode,
+      signatureRequestId,
+    });
     dispatchStatus = "skipped";
     errorMessage = "provider_config_missing";
     responsePayload = {
@@ -261,6 +323,7 @@ Deno.serve(async (request) => {
     dispatchStatus = "sent";
     responsePayload = {
       adapterCode: descriptor.adapterCode,
+      correlationId,
       externalDocumentId,
       externalEnvelopeId,
       fixtures: [
@@ -276,11 +339,33 @@ Deno.serve(async (request) => {
       realProviderImplemented: false,
       verificationStatus: "pending",
     };
+    logEdgeDocumentOperationalEvent("info", {
+      adapterCode: descriptor.adapterCode,
+      correlationId,
+      documentId,
+      event: "document.signature_d4sign_simulated_dispatched",
+      externalDocumentId,
+      operation: "document-signature-dispatch",
+      provider,
+      providerMode: descriptor.providerMode,
+      signatureRequestId,
+    });
   } else if (provider === "d4sign" && descriptor.providerMode === "real") {
+    logEdgeDocumentOperationalEvent("warn", {
+      adapterCode: descriptor.adapterCode,
+      correlationId,
+      documentId,
+      event: "document.signature_d4sign_real_not_implemented",
+      operation: "document-signature-dispatch",
+      provider,
+      providerMode: descriptor.providerMode,
+      signatureRequestId,
+    });
     dispatchStatus = "skipped";
     errorMessage = "not_implemented";
     responsePayload = {
       adapterCode: descriptor.adapterCode,
+      correlationId,
       providerMode: descriptor.providerMode,
       providerStatus: descriptor.providerStatus,
       realProviderImplemented: false,
@@ -308,7 +393,7 @@ Deno.serve(async (request) => {
       }
     } catch (error) {
       dispatchStatus = "failed";
-      errorMessage = error instanceof Error ? error.message : "Provider dispatch failed";
+      errorMessage = safeEdgeErrorMessage(error);
       responsePayload = { error: errorMessage };
     }
   } else if (isLocalProvider(provider)) {
@@ -343,6 +428,7 @@ Deno.serve(async (request) => {
       p_error_message: errorMessage,
       p_completed_at: new Date().toISOString(),
       p_metadata: {
+        ...edgeObservabilityMetadata(correlationId, "document.signature_dispatch_recorded"),
         adapterCode: descriptor.adapterCode,
         edgeFunction: "document-signature-dispatch",
         externalDocumentId,
@@ -358,7 +444,19 @@ Deno.serve(async (request) => {
   );
 
   if (dispatchError || !dispatchData) {
+    logEdgeDocumentOperationalEvent("error", {
+      correlationId,
+      dispatchStatus,
+      documentId,
+      errorMessage: safeEdgeErrorMessage(dispatchError?.message ?? "record_dispatch_failed"),
+      event: "document.signature_dispatch_record_failed",
+      operation: "document-signature-dispatch",
+      provider,
+      providerMode: descriptor.providerMode,
+      signatureRequestId,
+    });
     return jsonResponse(request, 500, {
+      correlationId,
       details: dispatchError?.message ?? null,
       error: "Failed to record document signature dispatch",
     });
@@ -377,14 +475,32 @@ Deno.serve(async (request) => {
           legacyUnitId,
           providerPayloadHash,
           providerStatus,
+          correlationId,
           requestStatus: dispatchStatus === "sent" ? "sent" : "pending",
           serviceClient,
           signatureRequestId,
         })
       : null;
 
+  logEdgeDocumentOperationalEvent(dispatchStatus === "failed" ? "error" : "info", {
+    correlationId,
+    dispatchStatus,
+    documentId,
+    event:
+      dispatchStatus === "sent"
+        ? "document.signature_dispatch_completed"
+        : "document.signature_dispatch_skipped_or_failed",
+    externalDocumentId,
+    operation: "document-signature-dispatch",
+    provider,
+    providerMode: descriptor.providerMode,
+    providerStatus,
+    signatureRequestId,
+  });
+
   return jsonResponse(request, dispatchStatus === "failed" ? 502 : 200, {
     adapterCode: descriptor.adapterCode,
+    correlationId,
     dispatchStatus,
     document: readinessData ?? dispatchData,
     errorMessage,
