@@ -165,6 +165,29 @@ export class ClinicalController {
     );
   }
 
+  @Get("documents/ops/health")
+  getDocumentOperationalHealth(
+    @Query("periodFrom") periodFrom?: string,
+    @Query("periodTo") periodTo?: string,
+    @Query("provider") provider?: string,
+    @Query("status") status?: string,
+    @Query("limit") limit?: string,
+    @Headers("x-correlation-id") correlationId?: string,
+    @AppContext() context?: AppRequestContext
+  ) {
+    return this.clinicalService.getDocumentOperationalHealth(
+      {
+        periodFrom,
+        periodTo,
+        provider,
+        status,
+        limit,
+      },
+      context,
+      correlationId
+    );
+  }
+
   @Get("documents/:id")
   getDocumentDetail(
     @Param("id") id: string,

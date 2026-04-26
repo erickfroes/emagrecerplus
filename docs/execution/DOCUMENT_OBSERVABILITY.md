@@ -77,11 +77,32 @@ Com a migration `0081`, auditorias que recebem esse payload passam a preencher t
 `audit.audit_events.request_id`, mantendo busca operacional por correlation id sem expor
 detalhes internos de storage.
 
+## Health operacional
+
+A migration `0082_document_operational_health.sql` adiciona a base de monitoramento
+operacional:
+
+- `docs.document_operational_events` para eventos seguros que antes ficavam apenas em
+  log, principalmente HMAC invalido, webhook duplicado e falhas de consumo.
+- `api.get_document_operational_health` e wrapper `public.get_document_operational_health`
+  service-role-only.
+- `GET /documents/ops/health` como endpoint administrativo.
+- `/clinical/documents/ops/health` como UI minima para cards, falhas recentes e filtros
+  por periodo, provider e status.
+
+A superficie combina eventos persistidos com `docs.signature_dispatch_attempts`,
+`docs.signature_events`, `docs.document_legal_evidence`,
+`docs.document_legal_evidence_packages` e `docs.printable_artifacts`, sem devolver
+`storageObjectPath` ou payload bruto de provider.
+
 ## Observabilidade D4Sign pre-real
 
 O modo `d4sign_unconfigured` registra `provider_config_missing` e nao chama rede externa.
 O modo `d4sign_simulated` registra dispatch simulado, webhook com HMAC fake, webhook duplicado
 idempotente e HMAC invalido. Nenhum desses modos marca verificacao como `verified`.
+
+O procedimento de investigacao por status fica em
+[`DOCUMENT_WEBHOOK_MONITORING.md`](./DOCUMENT_WEBHOOK_MONITORING.md).
 
 ## Validacao
 

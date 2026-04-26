@@ -12,6 +12,8 @@ const segmentLabels: Record<string, string> = {
   clinical: "Clinico",
   encounters: "Atendimento",
   documents: "Documentos",
+  ops: "Operacao",
+  health: "Saude",
   tasks: "Tarefas",
   settings: "Configuracoes",
   app: "Portal do paciente",

@@ -108,6 +108,67 @@ async function recordProviderReadiness(params: {
   return null;
 }
 
+async function recordOperationalEvent(params: {
+  descriptor: DocumentSignatureProviderDescriptor;
+  documentId: string | null;
+  eventType: string;
+  correlationId: string;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  hmacStrategy?: string | null;
+  idempotencyKey?: string | null;
+  legacyTenantId?: string | null;
+  providerEventHash?: string | null;
+  rawEventHash?: string | null;
+  serviceClient?: ReturnType<typeof createEdgeServiceClient>;
+  severity?: "error" | "info" | "warning";
+  signatureRequestId?: string | null;
+  status?: string | null;
+}) {
+  try {
+    const serviceClient = params.serviceClient ?? createEdgeServiceClient();
+    const { error } = await serviceClient.rpc("record_document_operational_event", {
+      p_event_category: "webhook",
+      p_event_type: params.eventType,
+      p_legacy_tenant_id: params.legacyTenantId ?? null,
+      p_legacy_unit_id: null,
+      p_document_id: params.documentId,
+      p_signature_request_id: params.signatureRequestId ?? null,
+      p_external_request_id: null,
+      p_severity: params.severity ?? "info",
+      p_provider: params.descriptor.providerCode,
+      p_provider_mode: params.descriptor.providerMode,
+      p_status: params.status ?? null,
+      p_error_code: params.errorCode ?? null,
+      p_error_message: params.errorMessage ?? null,
+      p_correlation_id: params.correlationId,
+      p_idempotency_key: params.idempotencyKey ?? null,
+      p_provider_event_hash: params.providerEventHash ?? null,
+      p_raw_event_hash: params.rawEventHash ?? null,
+      p_metadata: {
+        ...edgeObservabilityMetadata(params.correlationId, params.eventType),
+        adapterCode: params.descriptor.adapterCode,
+        edgeFunction: "document-signature-webhook",
+        hmacStrategy: params.hmacStrategy ?? null,
+        realProviderImplemented: false,
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    logEdgeDocumentOperationalEvent("warn", {
+      correlationId: params.correlationId,
+      errorMessage: safeEdgeErrorMessage(error),
+      event: "document.operational_event_record_failed",
+      operation: "document-signature-webhook",
+      provider: params.descriptor.providerCode,
+      providerMode: params.descriptor.providerMode,
+    });
+  }
+}
+
 function normalizeMockEvent(body: Record<string, unknown>, provider: string) {
   return normalizeMockDocumentSignatureWebhookEvent({
     ...body,
@@ -196,6 +257,20 @@ Deno.serve(async (request) => {
         providerMode: descriptor.providerMode,
         rawEventHash,
       });
+      await recordOperationalEvent({
+        descriptor,
+        documentId: asNonEmptyString(body.documentId),
+        eventType: "document.signature_webhook_hmac_invalid",
+        correlationId,
+        errorCode: "invalid_d4sign_hmac",
+        errorMessage: hmacResult.reason,
+        hmacStrategy: hmacResult.strategy,
+        legacyTenantId: asNonEmptyString(body.legacyTenantId),
+        rawEventHash,
+        severity: "error",
+        signatureRequestId: asNonEmptyString(body.signatureRequestId),
+        status: "invalid_hmac",
+      });
       return jsonResponse(request, 401, {
         correlationId,
         error: "invalid_d4sign_hmac",
@@ -279,6 +354,22 @@ Deno.serve(async (request) => {
       providerMode: descriptor.providerMode,
       signatureRequestId: normalizedEvent.signatureRequestId,
     });
+    await recordOperationalEvent({
+      descriptor,
+      documentId: normalizedEvent.documentId,
+      eventType: "document.signature_webhook_consume_failed",
+      correlationId,
+      errorCode: "consume_webhook_failed",
+      errorMessage: error?.message ?? "consume_webhook_failed",
+      idempotencyKey: asNonEmptyString(body.idempotencyKey) ?? providerEventHash ?? normalizedEvent.eventId,
+      legacyTenantId: asNonEmptyString(body.legacyTenantId),
+      providerEventHash,
+      rawEventHash,
+      serviceClient,
+      severity: "error",
+      signatureRequestId: normalizedEvent.signatureRequestId,
+      status: "failed",
+    });
     return jsonResponse(request, 500, {
       correlationId,
       error: "Failed to consume document signature webhook",
@@ -315,6 +406,23 @@ Deno.serve(async (request) => {
       serviceClient,
       signatureRequestId: normalizedEvent.signatureRequestId,
       verificationMethod,
+    });
+  }
+
+  if (snapshot.duplicate === true) {
+    await recordOperationalEvent({
+      descriptor,
+      documentId: normalizedEvent.documentId,
+      eventType: "document.signature_webhook_duplicate",
+      correlationId,
+      idempotencyKey: asNonEmptyString(body.idempotencyKey) ?? providerEventHash ?? normalizedEvent.eventId,
+      legacyTenantId: asNonEmptyString(body.legacyTenantId),
+      providerEventHash,
+      rawEventHash,
+      serviceClient,
+      severity: "warning",
+      signatureRequestId: normalizedEvent.signatureRequestId,
+      status: "duplicate",
     });
   }
 
