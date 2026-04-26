@@ -5,7 +5,7 @@ export function buildCorsHeaders(request: Request): HeadersInit {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-allow-headers":
-      "authorization, x-client-info, apikey, content-type, x-idempotency-key, stripe-signature",
+      "authorization, x-client-info, apikey, content-type, x-correlation-id, x-idempotency-key, stripe-signature",
     "access-control-max-age": "86400",
     vary: "origin",
   };

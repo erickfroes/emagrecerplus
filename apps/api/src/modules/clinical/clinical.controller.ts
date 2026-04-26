@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
 import { AppContext } from "../../common/auth/app-context.decorator.ts";
 import { RequirePermissions } from "../../common/auth/require-permissions.decorator.ts";
 import type { AppRequestContext } from "../../common/auth/app-session.ts";
@@ -108,9 +108,10 @@ export class ClinicalController {
   createEncounterDocument(
     @Param("id") id: string,
     @Body() dto: CreateEncounterDocumentDto,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.createEncounterDocument(id, dto, context);
+    return this.clinicalService.createEncounterDocument(id, dto, context, correlationId);
   }
 
   @RequirePermissions("clinical:write")
@@ -118,9 +119,10 @@ export class ClinicalController {
   createDocumentPrintableArtifact(
     @Param("id") id: string,
     @Body() dto: CreateDocumentPrintableArtifactDto,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.createDocumentPrintableArtifact(id, dto, context);
+    return this.clinicalService.createDocumentPrintableArtifact(id, dto, context, correlationId);
   }
 
   @RequirePermissions("clinical:write")
@@ -128,9 +130,10 @@ export class ClinicalController {
   createDocumentSignatureRequest(
     @Param("id") id: string,
     @Body() dto: CreateDocumentSignatureRequestDto,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.createDocumentSignatureRequest(id, dto, context);
+    return this.clinicalService.createDocumentSignatureRequest(id, dto, context, correlationId);
   }
 
   @Get("documents")
@@ -143,6 +146,7 @@ export class ClinicalController {
     @Query("issuedTo") issuedTo?: string,
     @Query("limit") limit?: string,
     @Query("offset") offset?: string,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
     return this.clinicalService.listDocuments(
@@ -156,41 +160,46 @@ export class ClinicalController {
         limit,
         offset,
       },
-      context
+      context,
+      correlationId
     );
   }
 
   @Get("documents/:id")
   getDocumentDetail(
     @Param("id") id: string,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.getDocumentDetail(id, context);
+    return this.clinicalService.getDocumentDetail(id, context, correlationId);
   }
 
   @Get("documents/:id/evidence")
   getDocumentEvidence(
     @Param("id") id: string,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.getDocumentEvidence(id, context);
+    return this.clinicalService.getDocumentEvidence(id, context, correlationId);
   }
 
   @HttpCode(200)
   @Post("documents/:id/evidence-package/access-link")
   createDocumentEvidencePackageAccessLink(
     @Param("id") id: string,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.createDocumentEvidencePackageAccessLink(id, context);
+    return this.clinicalService.createDocumentEvidencePackageAccessLink(id, context, correlationId);
   }
 
   @Get("documents/:id/access-links")
   getDocumentAccessLinks(
     @Param("id") id: string,
+    @Headers("x-correlation-id") correlationId?: string,
     @AppContext() context?: AppRequestContext
   ) {
-    return this.clinicalService.getDocumentAccessLinks(id, context);
+    return this.clinicalService.getDocumentAccessLinks(id, context, correlationId);
   }
 
   @RequirePermissions("clinical:write", "schedule:write")

@@ -45,6 +45,12 @@ import {
 } from "../../common/runtime/runtime-document-writes.ts";
 import { recordRuntimePrescription } from "../../common/runtime/runtime-prescription-writes.ts";
 import {
+  documentObservabilityMetadata,
+  logDocumentOperationalEvent,
+  resolveDocumentCorrelationId,
+  safeDocumentErrorMessage,
+} from "../../common/observability/document-observability.ts";
+import {
   autosaveRuntimeEncounterSection,
   clearRuntimeEncounterSoapDraft,
   getRuntimeEncounterAutosaveOverlay,
@@ -824,8 +830,11 @@ export class ClinicalService {
   async createEncounterDocument(
     encounterId: string,
     dto: CreateEncounterDocumentDto,
-    context?: AppRequestContext
+    context?: AppRequestContext,
+    correlationIdHeader?: string
   ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -861,7 +870,26 @@ export class ClinicalService {
     const summary = normalizeNullableText(dto.summary);
     const content = dto.content ?? {};
 
+    logDocumentOperationalEvent("info", {
+      correlationId,
+      documentType,
+      event: "document.issue_requested",
+      operation: "issue_document",
+      tenantId,
+      unitId: currentUnitId,
+    });
+
     if (!this.isRealAuthEnabled()) {
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentType,
+        durationMs: Date.now() - startedAt,
+        event: "document.issue_completed",
+        mode: "mock",
+        operation: "issue_document",
+        tenantId,
+        unitId: currentUnitId,
+      });
       return buildMockEncounterDocument({
         encounterId,
         templateId: dto.templateId ?? null,
@@ -875,7 +903,7 @@ export class ClinicalService {
     }
 
     try {
-      return await issueRuntimeEncounterDocument({
+      const document = await issueRuntimeEncounterDocument({
         legacyTenantId: tenantId,
         legacyEncounterId: encounter.id,
         legacyUnitId: currentUnitId,
@@ -887,16 +915,33 @@ export class ClinicalService {
         expiresAt: expiresAt?.toISOString() ?? null,
         content,
         metadata: {
+          ...documentObservabilityMetadata(correlationId, "document.issue_requested"),
           flow: "clinical",
           operation: "issue_document",
         },
         legacyCreatedByUserId: createdByUserId,
       });
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentType,
+        durationMs: Date.now() - startedAt,
+        event: "document.issue_completed",
+        operation: "issue_document",
+        tenantId,
+        unitId: currentUnitId,
+      });
+      return document;
     } catch (error) {
-      console.error(
-        `[runtime:write] Falha ao emitir documento estruturado para encounter ${encounter.id}.`,
-        error
-      );
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        documentType,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.issue_failed",
+        operation: "issue_document",
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel emitir o documento estruturado.");
     }
   }
@@ -904,8 +949,11 @@ export class ClinicalService {
   async createDocumentPrintableArtifact(
     documentId: string,
     dto: CreateDocumentPrintableArtifactDto,
-    context?: AppRequestContext
+    context?: AppRequestContext,
+    correlationIdHeader?: string
   ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -919,7 +967,28 @@ export class ClinicalService {
     );
     const artifactKind = normalizePrintableArtifactKind(dto.artifactKind);
 
+    logDocumentOperationalEvent("info", {
+      artifactKind,
+      correlationId,
+      documentId,
+      event: "document.printable_artifact_requested",
+      operation: "generate_printable_artifact",
+      tenantId,
+      unitId: currentUnitId,
+    });
+
     if (!this.isRealAuthEnabled()) {
+      logDocumentOperationalEvent("info", {
+        artifactKind,
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.printable_artifact_generated",
+        mode: "mock",
+        operation: "generate_printable_artifact",
+        tenantId,
+        unitId: currentUnitId,
+      });
       return buildMockEncounterDocumentPrintableArtifact({
         documentReference: documentId,
         artifactKind,
@@ -927,22 +996,41 @@ export class ClinicalService {
     }
 
     try {
-      return await createRuntimeDocumentPrintableArtifact({
+      const document = await createRuntimeDocumentPrintableArtifact({
         legacyTenantId: tenantId,
         legacyUnitId: currentUnitId,
         documentReference: documentId,
         artifactKind,
         metadata: {
+          ...documentObservabilityMetadata(correlationId, "document.printable_artifact_requested"),
           flow: "clinical",
           operation: "generate_printable_artifact",
         },
         legacyCreatedByUserId: actorUserId,
       });
+      logDocumentOperationalEvent("info", {
+        artifactKind,
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.printable_artifact_generated",
+        operation: "generate_printable_artifact",
+        tenantId,
+        unitId: currentUnitId,
+      });
+      return document;
     } catch (error) {
-      console.error(
-        `[runtime:write] Falha ao gerar artefato imprimivel para documento ${documentId}.`,
-        error
-      );
+      logDocumentOperationalEvent("error", {
+        artifactKind,
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.printable_artifact_failed",
+        operation: "generate_printable_artifact",
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel gerar o artefato imprimivel.");
     }
   }
@@ -950,8 +1038,11 @@ export class ClinicalService {
   async createDocumentSignatureRequest(
     documentId: string,
     dto: CreateDocumentSignatureRequestDto,
-    context?: AppRequestContext
+    context?: AppRequestContext,
+    correlationIdHeader?: string
   ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -974,7 +1065,28 @@ export class ClinicalService {
     const signerName = normalizeNullableText(dto.signerName);
     const signerEmail = normalizeNullableEmail(dto.signerEmail);
 
+    logDocumentOperationalEvent("info", {
+      correlationId,
+      documentId,
+      event: "document.signature_dispatch_requested",
+      operation: "request_document_signature",
+      providerCode,
+      tenantId,
+      unitId: currentUnitId,
+    });
+
     if (!this.isRealAuthEnabled()) {
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.signature_dispatch_completed",
+        mode: "mock",
+        operation: "request_document_signature",
+        providerCode,
+        tenantId,
+        unitId: currentUnitId,
+      });
       return buildMockEncounterDocumentSignatureRequest({
         documentReference: documentId,
         signerType,
@@ -996,6 +1108,7 @@ export class ClinicalService {
         providerCode,
         expiresAt: expiresAt?.toISOString() ?? null,
         metadata: {
+          ...documentObservabilityMetadata(correlationId, "document.signature_dispatch_requested"),
           flow: "clinical",
           operation: "request_document_signature",
         },
@@ -1010,30 +1123,63 @@ export class ClinicalService {
       }
 
       try {
-        return await dispatchRuntimeDocumentSignatureRequest({
+        const dispatchedDocument = await dispatchRuntimeDocumentSignatureRequest({
+          correlationId,
           legacyTenantId: tenantId,
           legacyUnitId: currentUnitId,
           documentReference: documentId,
           signatureRequestId,
           providerCode,
         });
+        logDocumentOperationalEvent("info", {
+          correlationId,
+          documentId,
+          durationMs: Date.now() - startedAt,
+          event: "document.signature_dispatch_completed",
+          operation: "request_document_signature",
+          providerCode,
+          signatureRequestId,
+          tenantId,
+          unitId: currentUnitId,
+        });
+        return dispatchedDocument;
       } catch (dispatchError) {
-        console.error(
-          `[runtime:write] Falha ao despachar assinatura para documento ${documentId}.`,
-          dispatchError
-        );
+        logDocumentOperationalEvent("warn", {
+          correlationId,
+          documentId,
+          durationMs: Date.now() - startedAt,
+          errorMessage: safeDocumentErrorMessage(dispatchError),
+          event: "document.signature_dispatch_failed",
+          operation: "request_document_signature",
+          providerCode,
+          tenantId,
+          unitId: currentUnitId,
+        });
         return createdDocument;
       }
     } catch (error) {
-      console.error(
-        `[runtime:write] Falha ao solicitar assinatura para documento ${documentId}.`,
-        error
-      );
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.signature_request_failed",
+        operation: "request_document_signature",
+        providerCode,
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel solicitar a assinatura do documento.");
     }
   }
 
-  async listDocuments(params: ListDocumentsQuery, context?: AppRequestContext) {
+  async listDocuments(
+    params: ListDocumentsQuery,
+    context?: AppRequestContext,
+    correlationIdHeader?: string
+  ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -1051,6 +1197,15 @@ export class ClinicalService {
     }
 
     if (!this.isRealAuthEnabled()) {
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        durationMs: Date.now() - startedAt,
+        event: "document.broker_list_completed",
+        mode: "mock",
+        operation: "list_documents",
+        tenantId,
+        unitId: currentUnitId,
+      });
       return {
         items: [],
         total: 0,
@@ -1060,7 +1215,7 @@ export class ClinicalService {
     }
 
     try {
-      return await listRuntimeAccessiblePatientDocuments({
+      const documents = await listRuntimeAccessiblePatientDocuments({
         legacyTenantId: tenantId,
         legacyUnitId: currentUnitId,
         patientId: params.patientId,
@@ -1072,13 +1227,38 @@ export class ClinicalService {
         limit,
         offset,
       });
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        durationMs: Date.now() - startedAt,
+        event: "document.broker_list_completed",
+        itemCount: documents.items.length,
+        operation: "list_documents",
+        tenantId,
+        total: documents.total,
+        unitId: currentUnitId,
+      });
+      return documents;
     } catch (error) {
-      console.error("[runtime:read] Falha ao listar documentos acessiveis.", error);
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.broker_list_failed",
+        operation: "list_documents",
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel listar os documentos acessiveis.");
     }
   }
 
-  async getDocumentDetail(documentId: string, context?: AppRequestContext) {
+  async getDocumentDetail(
+    documentId: string,
+    context?: AppRequestContext,
+    correlationIdHeader?: string
+  ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -1087,18 +1267,49 @@ export class ClinicalService {
     );
 
     if (!this.isRealAuthEnabled()) {
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.detail_loaded",
+        mode: "mock",
+        operation: "get_document_detail",
+        tenantId,
+        unitId: currentUnitId,
+      });
       return buildMockDocumentOperationalDetail(documentId);
     }
 
     try {
-      return await getRuntimeDocumentOperationalDetail({
+      const detail = await getRuntimeDocumentOperationalDetail({
         legacyTenantId: tenantId,
         legacyUnitId: currentUnitId,
         documentReference: documentId,
         accessEventLimit: 20,
       });
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentId,
+        documentStatus: detail.status,
+        durationMs: Date.now() - startedAt,
+        event: "document.detail_loaded",
+        operation: "get_document_detail",
+        signatureRequestCount: detail.signatureRequests.length,
+        tenantId,
+        unitId: currentUnitId,
+      });
+      return detail;
     } catch (error) {
-      console.error(`[runtime:read] Falha ao consultar detalhe operacional do documento ${documentId}.`, error);
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.detail_failed",
+        operation: "get_document_detail",
+        tenantId,
+        unitId: currentUnitId,
+      });
       if (isDocumentScopeError(error)) {
         throw new NotFoundException("Documento nao encontrado para a sessao atual.");
       }
@@ -1106,7 +1317,13 @@ export class ClinicalService {
     }
   }
 
-  async getDocumentEvidence(documentId: string, context?: AppRequestContext) {
+  async getDocumentEvidence(
+    documentId: string,
+    context?: AppRequestContext,
+    correlationIdHeader?: string
+  ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -1115,6 +1332,18 @@ export class ClinicalService {
     );
 
     if (!this.isRealAuthEnabled()) {
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.evidence_dossier_loaded",
+        evidenceStatus: "partial",
+        mode: "mock",
+        operation: "get_document_evidence",
+        verificationStatus: "pending",
+        tenantId,
+        unitId: currentUnitId,
+      });
       return {
         ...buildMockDocumentLegalEvidenceDossier(documentId),
         evidencePackage: buildMockDocumentEvidencePackageSummary(documentId, "not_generated"),
@@ -1144,6 +1373,21 @@ export class ClinicalService {
         documentReference: documentId,
       });
 
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.evidence_consolidated",
+        evidenceStatus: evidence.evidenceStatus,
+        operation: "get_document_evidence",
+        packageStatus: evidencePackage.packageStatus,
+        providerCode: evidence.providerCode,
+        providerMode: providerReadiness?.providerMode ?? null,
+        tenantId,
+        unitId: currentUnitId,
+        verificationStatus: evidence.verificationStatus,
+      });
+
       return {
         ...evidence,
         evidencePackage,
@@ -1153,15 +1397,27 @@ export class ClinicalService {
       if (isDocumentScopeError(error)) {
         throw new NotFoundException("Documento nao encontrado para a sessao atual.");
       }
-      console.error(`[runtime:read] Falha ao consultar evidencia juridica do documento ${documentId}.`, error);
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.evidence_dossier_failed",
+        operation: "get_document_evidence",
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel consultar a evidencia juridica do documento.");
     }
   }
 
   async createDocumentEvidencePackageAccessLink(
     documentId: string,
-    context?: AppRequestContext
+    context?: AppRequestContext,
+    correlationIdHeader?: string
   ): Promise<DocumentEvidencePackageAccessLink> {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -1172,6 +1428,15 @@ export class ClinicalService {
     const expiresInSeconds = 60 * 10;
     const generatedAt = new Date();
     const expiresAt = new Date(generatedAt.getTime() + expiresInSeconds * 1000).toISOString();
+
+    logDocumentOperationalEvent("info", {
+      correlationId,
+      documentId,
+      event: "document.evidence_package_requested",
+      operation: "create_document_evidence_package_access_link",
+      tenantId,
+      unitId: currentUnitId,
+    });
 
     if (!this.isRealAuthEnabled()) {
       const mockPackage = buildMockDocumentEvidencePackageSummary(documentId, "generated");
@@ -1190,6 +1455,19 @@ export class ClinicalService {
         byteSize: Buffer.byteLength(mockJson, "utf8"),
         generatedAt: generatedAt.toISOString(),
       };
+
+      logDocumentOperationalEvent("info", {
+        byteSize: finalPackage.byteSize,
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.evidence_package_signed_url_granted",
+        mode: "mock",
+        operation: "create_document_evidence_package_access_link",
+        packageStatus: finalPackage.packageStatus,
+        tenantId,
+        unitId: currentUnitId,
+      });
 
       return {
         documentId,
@@ -1217,6 +1495,16 @@ export class ClinicalService {
       });
 
       if (evidence.evidenceStatus === "missing") {
+        logDocumentOperationalEvent("warn", {
+          correlationId,
+          documentId,
+          durationMs: Date.now() - startedAt,
+          event: "document.evidence_package_failed",
+          failureReason: "missing_evidence",
+          operation: "create_document_evidence_package_access_link",
+          tenantId,
+          unitId: currentUnitId,
+        });
         throw new BadRequestException("Este documento ainda nao possui evidencia juridica para empacotar.");
       }
 
@@ -1226,6 +1514,7 @@ export class ClinicalService {
         documentReference: documentId,
         legacyActorUserId: actorUserId,
         metadata: {
+          ...documentObservabilityMetadata(correlationId, "document.evidence_package_generate_requested"),
           evidenceStatus: evidence.evidenceStatus,
           verificationStatus: evidence.verificationStatus,
         },
@@ -1266,10 +1555,20 @@ export class ClinicalService {
           failureReason: uploadResult.error.message,
           legacyActorUserId: actorUserId,
           metadata: {
+            ...documentObservabilityMetadata(correlationId, "document.evidence_package_failed"),
             phase: "storage_upload",
           },
         }).catch((auditError) => {
-          console.error("[runtime:write] Falha ao auditar erro de pacote de evidencia.", auditError);
+          logDocumentOperationalEvent("warn", {
+            correlationId,
+            documentId,
+            errorMessage: safeDocumentErrorMessage(auditError),
+            event: "document.evidence_package_audit_failed",
+            operation: "create_document_evidence_package_access_link",
+            phase: "storage_upload",
+            tenantId,
+            unitId: currentUnitId,
+          });
         });
 
         throw new Error(`Falha ao armazenar pacote de evidencia: ${uploadResult.error.message}`);
@@ -1285,6 +1584,7 @@ export class ClinicalService {
         byteSize: packageBytes.byteLength,
         legacyActorUserId: actorUserId,
         metadata: {
+          ...documentObservabilityMetadata(correlationId, "document.evidence_package_generated"),
           payloadHash,
           evidenceStatus: evidence.evidenceStatus,
           verificationStatus: evidence.verificationStatus,
@@ -1307,11 +1607,21 @@ export class ClinicalService {
           packageReference: packagePreparation.id,
           signedUrlExpiresAt: expiresAt,
           metadata: {
+            ...documentObservabilityMetadata(correlationId, "document.evidence_package_signed_url_failed"),
             phase: "signed_url",
             checksum,
           },
         }).catch((auditError) => {
-          console.error("[runtime:read] Falha ao auditar erro de storage do pacote de evidencia.", auditError);
+          logDocumentOperationalEvent("warn", {
+            correlationId,
+            documentId,
+            errorMessage: safeDocumentErrorMessage(auditError),
+            event: "document.evidence_package_audit_failed",
+            operation: "create_document_evidence_package_access_link",
+            phase: "signed_url",
+            tenantId,
+            unitId: currentUnitId,
+          });
         });
 
         throw new Error(`Falha ao gerar signed URL do pacote de evidencia: ${signedUrlResult.error.message}`);
@@ -1326,9 +1636,22 @@ export class ClinicalService {
         packageReference: packagePreparation.id,
         signedUrlExpiresAt: expiresAt,
         metadata: {
+          ...documentObservabilityMetadata(correlationId, "document.evidence_package_signed_url_granted"),
           checksum,
           byteSize: packageBytes.byteLength,
         },
+      });
+
+      logDocumentOperationalEvent("info", {
+        byteSize: packageBytes.byteLength,
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.evidence_package_signed_url_granted",
+        operation: "create_document_evidence_package_access_link",
+        packageStatus: completedPackage.packageStatus,
+        tenantId,
+        unitId: currentUnitId,
       });
 
       return {
@@ -1350,12 +1673,27 @@ export class ClinicalService {
       if (isDocumentScopeError(error)) {
         throw new NotFoundException("Documento nao encontrado para a sessao atual.");
       }
-      console.error(`[runtime:write] Falha ao gerar pacote de evidencia do documento ${documentId}.`, error);
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.evidence_package_failed",
+        operation: "create_document_evidence_package_access_link",
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel gerar o pacote de evidencia juridica.");
     }
   }
 
-  async getDocumentAccessLinks(documentId: string, context?: AppRequestContext) {
+  async getDocumentAccessLinks(
+    documentId: string,
+    context?: AppRequestContext,
+    correlationIdHeader?: string
+  ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
     const tenantId = await resolveTenantIdForRequest(this.prisma, context);
     const currentUnitId = await resolveUnitIdForRequest(
       this.prisma,
@@ -1370,6 +1708,16 @@ export class ClinicalService {
       const mockDocument = buildMockEncounterDocumentPrintableArtifact({
         documentReference: documentId,
         artifactKind: "preview",
+      });
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.signed_url_granted",
+        mode: "mock",
+        operation: "get_document_access_links",
+        tenantId,
+        unitId: currentUnitId,
       });
       return {
         documentId: mockDocument.id,
@@ -1395,6 +1743,7 @@ export class ClinicalService {
       const currentVersionLink = currentVersionPath
         ? await this.createAuditedSignedDocumentAccessLink({
             artifactReference: null,
+            correlationId,
             documentReference: document.id,
             expiresAt,
             expiresInSeconds,
@@ -1418,6 +1767,7 @@ export class ClinicalService {
 
             return this.createAuditedSignedDocumentAccessLink({
               artifactReference: artifact.id,
+              correlationId,
               documentReference: document.id,
               expiresAt,
               expiresInSeconds,
@@ -1434,6 +1784,18 @@ export class ClinicalService {
         )
       ).filter((artifact): artifact is DocumentAccessLink => Boolean(artifact));
 
+      logDocumentOperationalEvent("info", {
+        artifactLinkCount: artifactLinks.length,
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        event: "document.signed_url_granted",
+        hasCurrentVersionLink: Boolean(currentVersionLink),
+        operation: "get_document_access_links",
+        tenantId,
+        unitId: currentUnitId,
+      });
+
       return {
         documentId: document.id,
         generatedAt: generatedAt.toISOString(),
@@ -1442,10 +1804,16 @@ export class ClinicalService {
         artifacts: artifactLinks,
       };
     } catch (error) {
-      console.error(
-        `[runtime:read] Falha ao resolver access links do documento ${documentId}.`,
-        error
-      );
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        documentId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.signed_url_failed",
+        operation: "get_document_access_links",
+        tenantId,
+        unitId: currentUnitId,
+      });
       throw new BadRequestException("Nao foi possivel preparar o acesso seguro ao documento.");
     }
   }
@@ -1802,6 +2170,7 @@ export class ClinicalService {
 
   private async createAuditedSignedDocumentAccessLink(params: {
     artifactReference: string | null;
+    correlationId: string;
     documentReference: string;
     expiresAt: string;
     expiresInSeconds: number;
@@ -1865,6 +2234,7 @@ export class ClinicalService {
       storageBucket: accessTarget.storageBucket,
       storageObjectPath: accessTarget.storageObjectPath,
       metadata: {
+        ...documentObservabilityMetadata(params.correlationId, "document.signed_url_granted"),
         targetKind: accessTarget.targetKind,
         artifactKind: accessTarget.artifactKind,
       },
@@ -1883,6 +2253,7 @@ export class ClinicalService {
       storageBucket: accessTarget.storageBucket,
       storageObjectPath: accessTarget.storageObjectPath,
       metadata: {
+        ...documentObservabilityMetadata(params.correlationId, "document.signed_url_granted"),
         targetKind: accessTarget.targetKind,
         artifactKind: accessTarget.artifactKind,
       },
@@ -1903,6 +2274,7 @@ export class ClinicalService {
   private async recordDocumentAccessStorageError(
     accessTarget: RuntimeDocumentAccessTarget,
     params: {
+      correlationId: string;
       expiresAt: string;
       legacyActorUserId: string | null;
       legacyTenantId: string;
@@ -1924,12 +2296,21 @@ export class ClinicalService {
         storageBucket: accessTarget.storageBucket,
         storageObjectPath: accessTarget.storageObjectPath,
         metadata: {
+          ...documentObservabilityMetadata(params.correlationId, "document.signed_url_failed"),
           targetKind: accessTarget.targetKind,
           artifactKind: accessTarget.artifactKind,
         },
       });
     } catch (auditError) {
-      console.error("[runtime:read] Falha ao auditar erro de storage do broker documental.", auditError);
+      logDocumentOperationalEvent("warn", {
+        correlationId: params.correlationId,
+        documentId: accessTarget.documentId,
+        errorMessage: safeDocumentErrorMessage(auditError),
+        event: "document.access_audit_failed",
+        operation: "get_document_access_links",
+        tenantId: params.legacyTenantId,
+        unitId: params.legacyUnitId,
+      });
     }
   }
 
