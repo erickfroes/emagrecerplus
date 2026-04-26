@@ -3,14 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
   Copy,
   Download,
   ExternalLink,
+  Fingerprint,
   FileCheck2,
   FileText,
   History,
   Link2,
+  ShieldCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +32,7 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import { HttpError } from "@/lib/http";
 import type { ClinicalDocumentDetail } from "@/modules/clinical/api/get-document-detail";
+import type { ClinicalDocumentLegalEvidence } from "@/modules/clinical/api/get-document-evidence";
 import {
   copyToClipboard,
   openDocumentAccessLink,
@@ -39,15 +43,20 @@ import {
   formatDateTime,
   formatDocumentStatus,
   formatDocumentType,
+  formatEvidenceStatus,
+  formatVerificationStatus,
   formatSignatureStatus,
   getDocumentStatusTone,
+  getEvidenceStatusTone,
   getSignatureStatusTone,
 } from "@/modules/clinical/lib/document-display";
+import { useClinicalDocumentEvidence } from "@/modules/clinical/hooks/use-clinical-document-evidence";
 import { useClinicalDocumentDetail } from "@/modules/clinical/hooks/use-clinical-document-detail";
+import { useCreateDocumentEvidencePackageAccessLink } from "@/modules/clinical/hooks/use-create-document-evidence-package-access-link";
 import { useDocumentAccessLinks } from "@/modules/clinical/hooks/use-document-access-links";
 import { useState, type ReactNode } from "react";
 
-type AccessMode = "open" | "download" | "copy";
+type AccessMode = "open" | "download" | "copy" | "evidence-package";
 type BadgeTone = "default" | "success" | "warning" | "danger";
 
 type ActionMessage = {
@@ -63,7 +72,11 @@ export default function ClinicalDocumentDetailPage() {
   const documentQuery = useClinicalDocumentDetail(documentId, {
     enabled: canViewDocuments,
   });
+  const evidenceQuery = useClinicalDocumentEvidence(documentId, {
+    enabled: canViewDocuments,
+  });
   const accessLinksMutation = useDocumentAccessLinks();
+  const evidencePackageMutation = useCreateDocumentEvidencePackageAccessLink();
   const [pendingAction, setPendingAction] = useState<AccessMode | null>(null);
   const [actionMessage, setActionMessage] = useState<ActionMessage>(null);
 
@@ -109,6 +122,33 @@ export default function ClinicalDocumentDetailPage() {
           ? "Sua sessao nao tem permissao para preparar links deste documento."
           : "Nao foi possivel preparar o acesso seguro do documento.",
       });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function handleDownloadEvidencePackage() {
+    setPendingAction("evidence-package");
+    setActionMessage(null);
+
+    try {
+      const payload = await evidencePackageMutation.mutateAsync(documentId);
+
+      openDocumentAccessLink(payload.download.downloadUrl);
+      setActionMessage({
+        tone: "success",
+        text: `Pacote de evidencia preparado. Expira em ${formatDateTime(payload.expiresAt)}.`,
+      });
+      void evidenceQuery.refetch();
+      void documentQuery.refetch();
+    } catch (error) {
+      setActionMessage({
+        tone: "error",
+        text: isAuthorizationError(error)
+          ? "Sua sessao nao tem permissao para gerar o pacote de evidencia."
+          : "Nao foi possivel gerar o pacote de evidencia agora.",
+      });
+      void evidenceQuery.refetch();
     } finally {
       setPendingAction(null);
     }
@@ -180,10 +220,333 @@ export default function ClinicalDocumentDetailPage() {
             <SignaturePanel document={documentQuery.data} />
           </div>
 
+          <EvidencePanel
+            evidence={evidenceQuery.data ?? null}
+            error={evidenceQuery.error}
+            isLoading={evidenceQuery.isLoading}
+            isPackagePending={pendingAction === "evidence-package"}
+            onDownloadPackage={() => void handleDownloadEvidencePackage()}
+            onRetry={() => void evidenceQuery.refetch()}
+          />
+
           <OperationalEventsPanel document={documentQuery.data} />
           <AccessAuditPanel document={documentQuery.data} />
         </>
       ) : null}
+    </div>
+  );
+}
+
+function EvidencePanel({
+  evidence,
+  error,
+  isLoading,
+  isPackagePending,
+  onDownloadPackage,
+  onRetry,
+}: {
+  evidence: ClinicalDocumentLegalEvidence | null;
+  error: unknown;
+  isLoading: boolean;
+  isPackagePending: boolean;
+  onDownloadPackage: () => void;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return <Skeleton className="h-80 w-full" />;
+  }
+
+  if (error) {
+    return (
+      <Card className="space-y-4 border-amber-200 bg-amber-50">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-700" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-amber-950">
+              {isAuthorizationError(error) ? "Evidencia restrita" : "Erro na evidencia"}
+            </p>
+            <p className="mt-1 text-sm text-amber-800">
+              {isAuthorizationError(error)
+                ? "Sua sessao nao tem permissao para consultar o dossie juridico."
+                : "Nao foi possivel consolidar o dossie juridico agora."}
+            </p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+            Tentar novamente
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!evidence || evidence.evidenceStatus === "missing") {
+    return (
+      <Card className="space-y-4">
+        <EvidencePanelHeader evidence={evidence} />
+        <EmptyPanelState text="Sem evidencia juridica consolidada para este documento." />
+      </Card>
+    );
+  }
+
+  const latestSignatureEvent = evidence.events.signature[0] ?? null;
+  const latestDispatchEvent = evidence.events.dispatch[0] ?? null;
+  const primaryHash =
+    evidence.printableArtifactHash ??
+    evidence.documentHash ??
+    evidence.signedArtifactHash ??
+    evidence.manifestHash;
+  const packageStatus = evidence.evidencePackage?.packageStatus ?? "not_generated";
+  const canGeneratePackage = packageStatus !== "generating";
+  const providerReadiness = evidence.providerReadiness ?? null;
+  const providerNotice = resolveProviderReadinessNotice(evidence);
+
+  return (
+    <Card className="space-y-5">
+      <EvidencePanelHeader evidence={evidence} />
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <HashDetailItem label="Hash do artefato" value={primaryHash} />
+        <DetailItem
+          label="Assinatura"
+          value={evidence.signature?.requestStatus ? formatSignatureStatus(evidence.signature.requestStatus) : "Sem assinatura"}
+        />
+        <DetailItem
+          label="Provider"
+          value={formatProviderCode(providerReadiness?.providerCode ?? evidence.providerCode)}
+        />
+        <DetailItem
+          label="Modo"
+          value={formatProviderMode(providerReadiness?.providerMode)}
+        />
+        <DetailItem
+          label="Documento externo"
+          value={providerReadiness?.externalDocumentId ?? evidence.externalRequestId ?? "Sem id externo"}
+        />
+        <DetailItem
+          label="Envelope"
+          value={providerReadiness?.externalEnvelopeId ?? evidence.externalEnvelopeId ?? "Sem envelope"}
+        />
+        <DetailItem label="Consolidado em" value={formatDateTime(evidence.consolidatedAt)} />
+        <DetailItem
+          label="Verificacao"
+          value={formatProviderVerification(evidence)}
+        />
+        <DetailItem
+          label="Status provider"
+          value={formatProviderStatus(providerReadiness?.providerStatus)}
+        />
+        <DetailItem
+          label="Artefato"
+          value={
+            evidence.printableArtifact?.artifactKind
+              ? `${formatArtifactKind(evidence.printableArtifact.artifactKind)} / ${evidence.printableArtifact.renderStatus ?? "sem status"}`
+              : "Sem artefato"
+          }
+        />
+        <DetailItem
+          label="Paciente/profissional"
+          value={`${evidence.patient?.name ?? "Paciente"} / ${evidence.professional?.name ?? "Profissional"}`}
+        />
+      </div>
+
+      {providerNotice ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="flex gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-medium">{providerNotice.title}</p>
+              <p className="mt-1">{providerNotice.description}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {evidence.statusReasons.length ? (
+        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Pendencias da evidencia</p>
+          <p className="mt-1">{evidence.statusReasons.map(formatEvidenceReason).join(", ")}</p>
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border border-slate-100 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Pacote de evidencia</p>
+            <p className="mt-1 text-sm text-slate-500">
+              {formatEvidencePackageStatus(packageStatus)}
+              {evidence.evidencePackage?.generatedAt
+                ? ` em ${formatDateTime(evidence.evidencePackage.generatedAt)}`
+                : ""}
+            </p>
+            {evidence.evidencePackage?.checksum ? (
+              <p className="mt-2 break-all font-mono text-xs text-slate-600">
+                {evidence.evidencePackage.checksum}
+              </p>
+            ) : null}
+            {packageStatus === "failed" && evidence.evidencePackage?.failureReason ? (
+              <p className="mt-2 text-sm text-red-700">{evidence.evidencePackage.failureReason}</p>
+            ) : null}
+          </div>
+          <DocumentActionButton
+            icon={<Download className="h-4 w-4" />}
+            label={isPackagePending ? "Gerando" : "Baixar pacote"}
+            disabled={!canGeneratePackage || isPackagePending}
+            onClick={onDownloadPackage}
+          />
+        </div>
+        {packageStatus === "not_generated" ? (
+          <p className="mt-3 text-xs text-slate-500">
+            O pacote final sera gerado no servidor e disponibilizado por signed URL temporaria.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <EvidenceList
+          icon={<ShieldCheck className="h-4 w-4 text-slate-500" />}
+          title="Signatarios"
+          empty="Nenhum signatario registrado."
+          items={evidence.signatories.map((signatory) => ({
+            id: signatory.signatureRequestId ?? `${signatory.signerType}-${signatory.email}`,
+            primary: signatory.name ?? formatSignerType(signatory.signerType ?? "patient"),
+            secondary: `${signatory.email ?? "Sem e-mail"} / ${formatSignatureStatus(signatory.status ?? "pending")}`,
+          }))}
+        />
+        <EvidenceList
+          icon={<Link2 className="h-4 w-4 text-slate-500" />}
+          title="Eventos principais"
+          empty="Sem eventos de provider ou webhook."
+          items={[
+            latestSignatureEvent
+              ? {
+                  id: latestSignatureEvent.id ?? "signature-event",
+                  primary: formatSignatureEvent(latestSignatureEvent.eventType ?? "unknown"),
+                  secondary: `${latestSignatureEvent.source ?? "provider"} / ${formatDateTime(latestSignatureEvent.eventAt)}`,
+                }
+              : null,
+            latestDispatchEvent
+              ? {
+                  id: latestDispatchEvent.id ?? "dispatch-event",
+                  primary: formatDispatchStatus(latestDispatchEvent.dispatchStatus ?? "pending"),
+                  secondary: `${latestDispatchEvent.providerCode ?? evidence.providerCode ?? "provider"} / ${formatDateTime(
+                    latestDispatchEvent.attemptedAt,
+                  )}`,
+                }
+              : null,
+          ].filter((item): item is { id: string; primary: string; secondary: string } => Boolean(item))}
+        />
+        <EvidenceList
+          icon={<History className="h-4 w-4 text-slate-500" />}
+          title="Auditoria recente"
+          empty="Sem auditoria recente de acesso ao dossie."
+          items={evidence.evidenceAccessAudit.slice(0, 3).map((event) => ({
+            id: event.id ?? `${event.eventType}-${event.createdAt}`,
+            primary: event.actor?.name ?? event.actorType ?? "Sistema",
+            secondary: `${formatEvidenceAuditAction(event.action)} / ${formatDateTime(event.createdAt)}`,
+          }))}
+        />
+      </div>
+
+      {evidence.accessAudit.length ? (
+        <div className="overflow-x-auto border-t border-slate-100 pt-4">
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableHeaderCell>Acesso/download</TableHeaderCell>
+                <TableHeaderCell>Status</TableHeaderCell>
+                <TableHeaderCell>Alvo</TableHeaderCell>
+                <TableHeaderCell>Registro</TableHeaderCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {evidence.accessAudit.slice(0, 5).map((event) => (
+                <TableRow key={event.id ?? `${event.accessAction}-${event.createdAt}`}>
+                  <TableCell>{formatAccessAction(event.accessAction ?? "open")}</TableCell>
+                  <TableCell>
+                    <Badge tone={getAccessStatusTone(event.accessStatus ?? "granted")}>
+                      {formatAccessStatus(event.accessStatus ?? "granted")}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-slate-600">
+                    {event.artifactKind ? formatArtifactKind(event.artifactKind) : "Versao atual"}
+                  </TableCell>
+                  <TableCell className="text-slate-600">{formatDateTime(event.createdAt)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function EvidencePanelHeader({ evidence }: { evidence: ClinicalDocumentLegalEvidence | null }) {
+  return (
+    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="flex items-start gap-3">
+        <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700">
+          <Fingerprint className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Evidencia</p>
+          <p className="text-sm text-slate-500">
+            Dossie juridico consolidado a partir de documento, artefato, assinatura e auditoria.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Badge tone={getEvidenceStatusTone(evidence?.evidenceStatus ?? "missing")}>
+          {formatEvidenceStatus(evidence?.evidenceStatus ?? "missing")}
+        </Badge>
+        {evidence ? (
+          <Badge tone={evidence.verificationStatus === "failed" ? "danger" : "default"}>
+            {formatVerificationStatus(evidence.verificationStatus)}
+          </Badge>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function HashDetailItem({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</dt>
+      <dd className="mt-1 break-all font-mono text-xs text-slate-900">{value ?? "Hash indisponivel"}</dd>
+    </div>
+  );
+}
+
+function EvidenceList({
+  empty,
+  icon,
+  items,
+  title,
+}: {
+  empty: string;
+  icon: ReactNode;
+  items: Array<{ id: string; primary: string; secondary: string }>;
+  title: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 p-4">
+      <div className="flex items-center gap-2">
+        {icon}
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
+      </div>
+      {items.length ? (
+        <div className="mt-3 space-y-3">
+          {items.map((item) => (
+            <div key={item.id} className="text-sm">
+              <p className="font-medium text-slate-900">{item.primary}</p>
+              <p className="text-slate-500">{item.secondary}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-slate-500">{empty}</p>
+      )}
     </div>
   );
 }
@@ -780,11 +1143,151 @@ function formatSignatureEvent(value: string) {
   switch (value) {
     case "signed":
       return "Documento assinado";
+    case "requested":
+      return "Assinatura solicitada";
+    case "dispatch_sent":
+      return "Dispatch enviado";
+    case "dispatch_failed":
+      return "Dispatch falhou";
     case "signature_dispatch":
       return "Dispatch registrado";
     default:
       return value;
   }
+}
+
+function formatEvidenceReason(value: string) {
+  switch (value) {
+    case "missing_document_version":
+      return "versao ausente";
+    case "missing_printable_artifact":
+      return "artefato ausente";
+    case "printable_artifact_not_rendered":
+      return "artefato nao renderizado";
+    case "missing_artifact_hash":
+      return "hash ausente";
+    case "missing_signature_request":
+      return "assinatura ausente";
+    case "signature_not_completed":
+      return "assinatura pendente";
+    default:
+      return value;
+  }
+}
+
+function formatEvidenceAuditAction(value: string | null | undefined) {
+  return value === "read" ? "Consulta" : value ?? "Auditoria";
+}
+
+function formatEvidencePackageStatus(value: string) {
+  switch (value) {
+    case "generated":
+      return "Pacote gerado";
+    case "generating":
+      return "Pacote em geracao";
+    case "failed":
+      return "Erro ao gerar pacote";
+    case "superseded":
+      return "Pacote substituido";
+    case "not_generated":
+    default:
+      return "Pacote ainda nao gerado";
+  }
+}
+
+function formatProviderCode(value: string | null | undefined) {
+  switch (value) {
+    case "d4sign":
+      return "D4Sign";
+    case "mock":
+    case "mock_internal":
+      return "Mock";
+    case "internal":
+    case "manual":
+      return "Interno";
+    default:
+      return value ?? "Nao informado";
+  }
+}
+
+function formatProviderMode(value: string | null | undefined) {
+  switch (value) {
+    case "unconfigured":
+      return "Nao configurado";
+    case "simulated":
+      return "Simulado";
+    case "real":
+      return "Real";
+    default:
+      return "Nao informado";
+  }
+}
+
+function formatProviderStatus(value: string | null | undefined) {
+  switch (value) {
+    case "provider_config_missing":
+      return "Credenciais pendentes";
+    case "simulated_dispatched":
+      return "Simulacao enviada";
+    case "simulated_ready":
+      return "Simulacao pronta";
+    case "simulated_webhook_received":
+      return "Webhook simulado recebido";
+    case "not_implemented":
+      return "Adapter real pendente";
+    case "mock_ready":
+      return "Mock pronto";
+    default:
+      return value ?? "Nao informado";
+  }
+}
+
+function formatProviderVerification(evidence: ClinicalDocumentLegalEvidence) {
+  const readiness = evidence.providerReadiness;
+
+  if (readiness?.providerCode === "d4sign" && readiness.providerMode !== "real") {
+    return "Verificacao pendente";
+  }
+
+  if (readiness?.providerCode === "d4sign" && !readiness.providerRealAdapterImplemented) {
+    return "Validacao real pendente";
+  }
+
+  return formatVerificationStatus(evidence.verificationStatus);
+}
+
+function resolveProviderReadinessNotice(evidence: ClinicalDocumentLegalEvidence) {
+  const readiness = evidence.providerReadiness;
+
+  if (readiness?.providerCode !== "d4sign") {
+    return null;
+  }
+
+  if (readiness.providerMode === "unconfigured" || readiness.credentialsPending) {
+    return {
+      title: "D4Sign nao configurado",
+      description:
+        "As credenciais reais ainda nao foram liberadas. O sistema registrou a pendencia sem chamar API externa.",
+    };
+  }
+
+  if (readiness.providerMode === "simulated") {
+    return {
+      title: "D4Sign em modo simulado",
+      description:
+        "Fluxo local com HMAC de teste e idempotencia ativa. A verificacao juridica real continua pendente.",
+    };
+  }
+
+  if (!readiness.providerRealAdapterImplemented) {
+    return {
+      title: "Adapter real pendente",
+      description:
+        "Credenciais podem estar presentes, mas a chamada real para D4Sign ainda nao foi implementada.",
+    };
+  }
+
+  return null;
 }
 
 function formatAccessAction(value: string) {

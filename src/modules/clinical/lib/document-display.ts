@@ -86,6 +86,47 @@ export function getSignatureStatusTone(value: string): BadgeTone {
   }
 }
 
+export function formatEvidenceStatus(value: string) {
+  switch (value) {
+    case "complete":
+      return "Completa";
+    case "failed":
+      return "Erro";
+    case "superseded":
+      return "Substituida";
+    case "missing":
+      return "Sem evidencia";
+    default:
+      return "Parcial";
+  }
+}
+
+export function getEvidenceStatusTone(value: string): BadgeTone {
+  switch (value) {
+    case "complete":
+      return "success";
+    case "failed":
+      return "danger";
+    case "partial":
+      return "warning";
+    default:
+      return "default";
+  }
+}
+
+export function formatVerificationStatus(value: string) {
+  switch (value) {
+    case "verified":
+      return "Verificada";
+    case "pending":
+      return "Pendente";
+    case "failed":
+      return "Falhou";
+    default:
+      return "Nao exigida";
+  }
+}
+
 export function formatArtifactKind(value: string) {
   switch (value) {
     case "preview":
