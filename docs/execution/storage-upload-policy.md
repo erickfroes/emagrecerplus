@@ -18,7 +18,7 @@ Ele cobre buckets fundacionais, MIME, tamanho e prefixo de path.
 | --- | --- | --- | --- | --- | --- |
 | `brand-assets` | logo e ativos de configuracao do tenant | nao | 5 MB | `image/png`, `image/jpeg`, `image/webp`, `image/svg+xml` | `tenant/<tenant_uuid>/branding/...` |
 | `profile-avatars` | avatar de equipe e perfil autenticado | nao | 5 MB | `image/png`, `image/jpeg`, `image/webp` | `tenant/<tenant_uuid>/profiles/<profile_uuid>/...` |
-| `patient-documents` | PDFs, anexos, comprovantes, previews e pacotes documentais do paciente | nao | 20 MB | `application/pdf`, `application/zip`, `application/x-zip-compressed`, `image/png`, `image/jpeg`, `image/webp`, `text/html` | `tenant/<tenant_uuid>/patients/<patient_uuid>/documents/...` |
+| `patient-documents` | PDFs, anexos, comprovantes, previews e pacotes documentais do paciente | nao | 20 MB | `application/json`, `application/pdf`, `application/zip`, `application/x-zip-compressed`, `image/png`, `image/jpeg`, `image/webp`, `text/html` | `tenant/<tenant_uuid>/patients/<patient_uuid>/documents/...` |
 | `clinical-attachments` | anexos vinculados a encounter e atendimento | nao | 20 MB | `application/pdf`, `image/png`, `image/jpeg`, `image/webp` | `tenant/<tenant_uuid>/patients/<patient_uuid>/encounters/<encounter_uuid>/...` |
 
 ## Politica de acesso
@@ -48,5 +48,5 @@ Ele cobre buckets fundacionais, MIME, tamanho e prefixo de path.
 - qualquer bucket novo precisa entrar aqui e em migration versionada
 - se o produto precisar de novo MIME ou tamanho maior, a mudanca deve acontecer primeiro em migration
 - buckets documentais de etapas futuras podem nascer depois, mas devem seguir o mesmo padrao: privado + prefixo por tenant + RLS ligada ao dominio
-- `text/html` em `patient-documents` esta liberado para previews versionados do fluxo `document-printable`; `pdf` usa `application/pdf` e `print_package` usa ZIP com HTML, PDF e manifesto
+- `text/html` em `patient-documents` esta liberado para previews versionados do fluxo `document-printable`; `pdf` usa `application/pdf`, `print_package` usa ZIP com HTML, PDF e manifesto, e o pacote juridico final de evidencia usa `application/json`
 - o detalhe do encounter ja usa signed URLs temporarias para abrir e baixar artefatos de `patient-documents`; qualquer nova superficie documental deve reaproveitar expiracao curta e nunca expor path privado diretamente ao browser

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
   AppointmentStatus,
@@ -22,15 +22,24 @@ import {
 import {
   createRuntimeDocumentPrintableArtifact,
   createRuntimeDocumentSignatureRequest,
+  completeRuntimeDocumentEvidencePackage,
   dispatchRuntimeDocumentSignatureRequest,
+  getRuntimeDocumentEvidencePackageSummary,
+  getRuntimeDocumentLegalEvidenceDossier,
   getRuntimeDocumentOperationalDetail,
+  getRuntimeDocumentSignatureProviderReadiness,
   getRuntimeEncounterDocumentSnapshot,
   issueRuntimeEncounterDocument,
   listRuntimeAccessiblePatientDocuments,
   listRuntimeDocumentTemplates,
+  prepareRuntimeDocumentEvidencePackage,
   prepareRuntimeDocumentAccess,
+  recordRuntimeDocumentEvidencePackageAccessEvent,
   recordRuntimeDocumentAccessEvent,
+  type RuntimeDocumentEvidencePackageSummary,
   type RuntimeDocumentAccessTarget,
+  type RuntimeDocumentLegalEvidenceDossier,
+  type RuntimeDocumentSignatureProviderReadiness,
   type RuntimeDocumentOperationalDetail,
   type RuntimeDocumentTemplate,
 } from "../../common/runtime/runtime-document-writes.ts";
@@ -171,6 +180,19 @@ type DocumentAccessLink = {
   label: string;
   openUrl: string;
   renderStatus: string | null;
+};
+
+type DocumentEvidencePackageAccessLink = {
+  documentId: string;
+  generatedAt: string;
+  expiresAt: string;
+  package: RuntimeDocumentEvidencePackageSummary;
+  download: {
+    downloadUrl: string;
+    expiresAt: string;
+    fileName: string;
+    label: string;
+  };
 };
 
 type ListDocumentsQuery = {
@@ -1081,6 +1103,255 @@ export class ClinicalService {
         throw new NotFoundException("Documento nao encontrado para a sessao atual.");
       }
       throw new BadRequestException("Nao foi possivel consultar o detalhe do documento.");
+    }
+  }
+
+  async getDocumentEvidence(documentId: string, context?: AppRequestContext) {
+    const tenantId = await resolveTenantIdForRequest(this.prisma, context);
+    const currentUnitId = await resolveUnitIdForRequest(
+      this.prisma,
+      context,
+      process.env.DEFAULT_UNIT_CODE
+    );
+
+    if (!this.isRealAuthEnabled()) {
+      return {
+        ...buildMockDocumentLegalEvidenceDossier(documentId),
+        evidencePackage: buildMockDocumentEvidencePackageSummary(documentId, "not_generated"),
+      };
+    }
+
+    try {
+      const actorUserId = await resolveActorUserIdForRequest(this.prisma, context);
+      const evidence = await getRuntimeDocumentLegalEvidenceDossier({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+        accessEventLimit: 10,
+        legacyActorUserId: actorUserId,
+        reconsolidate: true,
+        auditAccess: true,
+      });
+      const evidencePackage = await getRuntimeDocumentEvidencePackageSummary({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+        eventLimit: 10,
+      });
+      const providerReadiness = await getRuntimeDocumentSignatureProviderReadiness({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+      });
+
+      return {
+        ...evidence,
+        evidencePackage,
+        providerReadiness,
+      };
+    } catch (error) {
+      if (isDocumentScopeError(error)) {
+        throw new NotFoundException("Documento nao encontrado para a sessao atual.");
+      }
+      console.error(`[runtime:read] Falha ao consultar evidencia juridica do documento ${documentId}.`, error);
+      throw new BadRequestException("Nao foi possivel consultar a evidencia juridica do documento.");
+    }
+  }
+
+  async createDocumentEvidencePackageAccessLink(
+    documentId: string,
+    context?: AppRequestContext
+  ): Promise<DocumentEvidencePackageAccessLink> {
+    const tenantId = await resolveTenantIdForRequest(this.prisma, context);
+    const currentUnitId = await resolveUnitIdForRequest(
+      this.prisma,
+      context,
+      process.env.DEFAULT_UNIT_CODE
+    );
+    const actorUserId = await resolveActorUserIdForRequest(this.prisma, context);
+    const expiresInSeconds = 60 * 10;
+    const generatedAt = new Date();
+    const expiresAt = new Date(generatedAt.getTime() + expiresInSeconds * 1000).toISOString();
+
+    if (!this.isRealAuthEnabled()) {
+      const mockPackage = buildMockDocumentEvidencePackageSummary(documentId, "generated");
+      const mockPayload = buildDocumentEvidencePackagePayload({
+        evidence: {
+          ...buildMockDocumentLegalEvidenceDossier(documentId),
+          evidencePackage: mockPackage,
+        },
+        generatedAt: generatedAt.toISOString(),
+      });
+      const mockJson = stableStringify(mockPayload);
+      const finalChecksum = sha256Hex(Buffer.from(mockJson, "utf8"));
+      const finalPackage = {
+        ...mockPackage,
+        checksum: finalChecksum,
+        byteSize: Buffer.byteLength(mockJson, "utf8"),
+        generatedAt: generatedAt.toISOString(),
+      };
+
+      return {
+        documentId,
+        generatedAt: generatedAt.toISOString(),
+        expiresAt,
+        package: finalPackage,
+        download: {
+          downloadUrl: `data:application/json;charset=utf-8,${encodeURIComponent(mockJson)}`,
+          expiresAt,
+          fileName: finalPackage.fileName ?? "dossie-evidencia.json",
+          label: "Pacote de evidencia",
+        },
+      };
+    }
+
+    try {
+      const evidence = await getRuntimeDocumentLegalEvidenceDossier({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+        accessEventLimit: 20,
+        legacyActorUserId: actorUserId,
+        reconsolidate: true,
+        auditAccess: false,
+      });
+
+      if (evidence.evidenceStatus === "missing") {
+        throw new BadRequestException("Este documento ainda nao possui evidencia juridica para empacotar.");
+      }
+
+      const packagePreparation = await prepareRuntimeDocumentEvidencePackage({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+        legacyActorUserId: actorUserId,
+        metadata: {
+          evidenceStatus: evidence.evidenceStatus,
+          verificationStatus: evidence.verificationStatus,
+        },
+      });
+      const packagePayload = buildDocumentEvidencePackagePayload({
+        evidence: {
+          ...evidence,
+          evidencePackage: undefined,
+        },
+        generatedAt: generatedAt.toISOString(),
+      });
+      const payloadHash = sha256Hex(Buffer.from(stableStringify(packagePayload), "utf8"));
+      const finalPayload = {
+        ...packagePayload,
+        package: {
+          ...packagePayload.package,
+          payloadHash,
+        },
+      };
+      const packageJson = stableStringify(finalPayload);
+      const packageBytes = Buffer.from(packageJson, "utf8");
+      const checksum = sha256Hex(packageBytes);
+
+      const uploadResult = await supabaseAdmin.storage
+        .from(packagePreparation.storageBucket)
+        .upload(packagePreparation.storageObjectPath, packageBytes, {
+          contentType: packagePreparation.contentType,
+          upsert: false,
+        });
+
+      if (uploadResult.error) {
+        await completeRuntimeDocumentEvidencePackage({
+          legacyTenantId: tenantId,
+          legacyUnitId: currentUnitId,
+          documentReference: documentId,
+          packageReference: packagePreparation.id,
+          packageStatus: "failed",
+          failureReason: uploadResult.error.message,
+          legacyActorUserId: actorUserId,
+          metadata: {
+            phase: "storage_upload",
+          },
+        }).catch((auditError) => {
+          console.error("[runtime:write] Falha ao auditar erro de pacote de evidencia.", auditError);
+        });
+
+        throw new Error(`Falha ao armazenar pacote de evidencia: ${uploadResult.error.message}`);
+      }
+
+      const completedPackage = await completeRuntimeDocumentEvidencePackage({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        documentReference: documentId,
+        packageReference: packagePreparation.id,
+        packageStatus: "generated",
+        checksum,
+        byteSize: packageBytes.byteLength,
+        legacyActorUserId: actorUserId,
+        metadata: {
+          payloadHash,
+          evidenceStatus: evidence.evidenceStatus,
+          verificationStatus: evidence.verificationStatus,
+        },
+      });
+
+      const signedUrlResult = await supabaseAdmin.storage
+        .from(packagePreparation.storageBucket)
+        .createSignedUrl(packagePreparation.storageObjectPath, expiresInSeconds, {
+          download: completedPackage.fileName ?? packagePreparation.fileName,
+        });
+
+      if (signedUrlResult.error) {
+        await recordRuntimeDocumentEvidencePackageAccessEvent({
+          accessStatus: "storage_error",
+          documentReference: documentId,
+          legacyActorUserId: actorUserId,
+          legacyTenantId: tenantId,
+          legacyUnitId: currentUnitId,
+          packageReference: packagePreparation.id,
+          signedUrlExpiresAt: expiresAt,
+          metadata: {
+            phase: "signed_url",
+            checksum,
+          },
+        }).catch((auditError) => {
+          console.error("[runtime:read] Falha ao auditar erro de storage do pacote de evidencia.", auditError);
+        });
+
+        throw new Error(`Falha ao gerar signed URL do pacote de evidencia: ${signedUrlResult.error.message}`);
+      }
+
+      await recordRuntimeDocumentEvidencePackageAccessEvent({
+        accessStatus: "granted",
+        documentReference: documentId,
+        legacyActorUserId: actorUserId,
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        packageReference: packagePreparation.id,
+        signedUrlExpiresAt: expiresAt,
+        metadata: {
+          checksum,
+          byteSize: packageBytes.byteLength,
+        },
+      });
+
+      return {
+        documentId,
+        generatedAt: generatedAt.toISOString(),
+        expiresAt,
+        package: completedPackage,
+        download: {
+          downloadUrl: signedUrlResult.data.signedUrl,
+          expiresAt,
+          fileName: completedPackage.fileName ?? packagePreparation.fileName,
+          label: "Pacote de evidencia",
+        },
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      if (isDocumentScopeError(error)) {
+        throw new NotFoundException("Documento nao encontrado para a sessao atual.");
+      }
+      console.error(`[runtime:write] Falha ao gerar pacote de evidencia do documento ${documentId}.`, error);
+      throw new BadRequestException("Nao foi possivel gerar o pacote de evidencia juridica.");
     }
   }
 
@@ -2618,6 +2889,286 @@ function buildMockDocumentOperationalDetail(documentReference: string): RuntimeD
     prescriptions: [],
     accessEvents: [],
   };
+}
+
+function buildMockDocumentLegalEvidenceDossier(documentReference: string): RuntimeDocumentLegalEvidenceDossier {
+  const now = new Date().toISOString();
+
+  return {
+    id: `mock-evidence-${documentReference}`,
+    runtimeId: `mock-evidence-${documentReference}`,
+    documentId: documentReference,
+    runtimeDocumentId: documentReference,
+    documentVersionId: `mock-version-${documentReference}`,
+    runtimeDocumentVersionId: `mock-version-${documentReference}`,
+    printableArtifactId: null,
+    runtimePrintableArtifactId: null,
+    signatureRequestId: null,
+    runtimeSignatureRequestId: null,
+    evidenceStatus: "partial",
+    verificationStatus: "not_required",
+    providerCode: "mock",
+    externalRequestId: null,
+    externalEnvelopeId: null,
+    hashAlgorithm: "sha256",
+    documentHash: null,
+    printableArtifactHash: null,
+    signedArtifactHash: null,
+    manifestHash: null,
+    verifiedAt: null,
+    failedAt: null,
+    failureReason: null,
+    consolidatedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    document: {
+      id: documentReference,
+      runtimeId: documentReference,
+      documentType: "report",
+      status: "issued",
+      title: "Documento mock",
+      issuedAt: now,
+      signedAt: null,
+    },
+    patient: {
+      id: "mock-patient",
+      runtimeId: "mock-patient",
+      name: "Paciente mock",
+    },
+    professional: {
+      id: "mock-professional",
+      runtimeId: "mock-professional",
+      name: "Profissional mock",
+      professionalType: "nutritionist",
+      licenseNumber: null,
+    },
+    author: {
+      runtimeId: "mock-author",
+      name: "Equipe clinica mock",
+      email: null,
+    },
+    encounter: null,
+    template: null,
+    version: {
+      id: `mock-version-${documentReference}`,
+      runtimeId: `mock-version-${documentReference}`,
+      versionNumber: 1,
+      status: "issued",
+      hasStorageObject: false,
+      hasSignedStorageObject: false,
+    },
+    printableArtifact: null,
+    signature: null,
+    signatories: [],
+    provider: {
+      providerCode: "mock",
+    },
+    hashes: {
+      algorithm: "sha256",
+    },
+    events: {
+      signature: [],
+      dispatch: [],
+    },
+    timestamps: {
+      documentIssuedAt: now,
+      consolidatedAt: now,
+    },
+    statusReasons: [
+      "missing_printable_artifact",
+      "missing_artifact_hash",
+      "missing_signature_request",
+    ],
+    accessAudit: [],
+    evidenceAccessAudit: [],
+    accessAuditSummary: {
+      eventCount: 0,
+      capturedAt: now,
+    },
+    providerContract: {
+      realProviderImplemented: false,
+      expectedVerificationFields: [
+        "providerCode",
+        "externalRequestId",
+        "externalEnvelopeId",
+        "webhookSignature",
+        "artifactHash",
+        "verificationPayload",
+      ],
+    },
+    providerReadiness: buildMockDocumentSignatureProviderReadiness(documentReference),
+  };
+}
+
+function buildMockDocumentSignatureProviderReadiness(
+  documentReference: string
+): RuntimeDocumentSignatureProviderReadiness {
+  return {
+    documentId: documentReference,
+    runtimeDocumentId: documentReference,
+    signatureRequestId: null,
+    runtimeSignatureRequestId: null,
+    providerCode: "mock",
+    providerMode: "simulated",
+    adapterCode: "mock",
+    providerStatus: "mock_ready",
+    externalDocumentId: null,
+    externalEnvelopeId: null,
+    providerEventHash: null,
+    rawEventHash: null,
+    providerPayloadHash: null,
+    hmacStrategy: null,
+    hmacValid: false,
+    verificationMethod: null,
+    verificationStatus: "not_required",
+    verificationFailureReason: null,
+    verifiedAt: null,
+    providerRealAdapterImplemented: false,
+    credentialsPending: false,
+    latestDispatch: null,
+    latestEvent: null,
+  };
+}
+
+function buildMockDocumentEvidencePackageSummary(
+  documentReference: string,
+  packageStatus: RuntimeDocumentEvidencePackageSummary["packageStatus"]
+): RuntimeDocumentEvidencePackageSummary {
+  const now = new Date().toISOString();
+
+  return {
+    id: packageStatus === "not_generated" ? null : `mock-evidence-package-${documentReference}`,
+    runtimeId: packageStatus === "not_generated" ? null : `mock-evidence-package-${documentReference}`,
+    documentId: documentReference,
+    runtimeDocumentId: documentReference,
+    evidenceId: `mock-evidence-${documentReference}`,
+    runtimeEvidenceId: `mock-evidence-${documentReference}`,
+    documentVersionId: `mock-version-${documentReference}`,
+    runtimeDocumentVersionId: `mock-version-${documentReference}`,
+    signatureRequestId: null,
+    runtimeSignatureRequestId: null,
+    packageKind: "legal_evidence_json",
+    packageStatus,
+    contentType: "application/json",
+    fileName: `dossie-evidencia-${documentReference}.json`,
+    checksum: null,
+    byteSize: null,
+    generatedAt: packageStatus === "generated" ? now : null,
+    failedAt: packageStatus === "failed" ? now : null,
+    failureReason: packageStatus === "failed" ? "Falha mock ao gerar pacote" : null,
+    createdAt: packageStatus === "not_generated" ? null : now,
+    updatedAt: packageStatus === "not_generated" ? null : now,
+    metadata: {
+      schemaVersion: "document-legal-evidence-package.v1",
+    },
+    events:
+      packageStatus === "generated"
+        ? [
+            {
+              id: `mock-evidence-package-event-${documentReference}`,
+              runtimeId: `mock-evidence-package-event-${documentReference}`,
+              eventAction: "download",
+              eventStatus: "granted",
+              signedUrlExpiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+              createdAt: now,
+              actor: null,
+            },
+          ]
+        : [],
+  };
+}
+
+function buildDocumentEvidencePackagePayload(params: {
+  evidence: RuntimeDocumentLegalEvidenceDossier;
+  generatedAt: string;
+}) {
+  const evidence = params.evidence;
+
+  return {
+    schemaVersion: "document-legal-evidence-package.v1",
+    generatedAt: params.generatedAt,
+    package: {
+      kind: "legal_evidence_json",
+      contentType: "application/json",
+      hashAlgorithm: "sha256",
+      evidenceStatus: evidence.evidenceStatus,
+      verificationStatus: evidence.verificationStatus,
+      providerRealImplemented: false,
+      providerVerificationRequired: evidence.verificationStatus === "pending",
+    },
+    evidence: {
+      id: evidence.id,
+      documentId: evidence.documentId,
+      documentVersionId: evidence.documentVersionId,
+      printableArtifactId: evidence.printableArtifactId,
+      signatureRequestId: evidence.signatureRequestId,
+      evidenceStatus: evidence.evidenceStatus,
+      verificationStatus: evidence.verificationStatus,
+      providerCode: evidence.providerCode,
+      externalRequestId: evidence.externalRequestId,
+      externalEnvelopeId: evidence.externalEnvelopeId,
+      hashAlgorithm: evidence.hashAlgorithm,
+      documentHash: evidence.documentHash,
+      printableArtifactHash: evidence.printableArtifactHash,
+      signedArtifactHash: evidence.signedArtifactHash,
+      manifestHash: evidence.manifestHash,
+      verifiedAt: evidence.verifiedAt,
+      failedAt: evidence.failedAt,
+      failureReason: evidence.failureReason,
+      consolidatedAt: evidence.consolidatedAt,
+      document: evidence.document,
+      version: evidence.version,
+      printableArtifact: evidence.printableArtifact,
+      patient: evidence.patient,
+      professional: evidence.professional,
+      author: evidence.author,
+      encounter: evidence.encounter,
+      template: evidence.template,
+      signature: evidence.signature,
+      signatories: evidence.signatories,
+      provider: evidence.provider,
+      hashes: evidence.hashes,
+      events: evidence.events,
+      timestamps: evidence.timestamps,
+      statusReasons: evidence.statusReasons,
+      accessAudit: evidence.accessAudit,
+      evidenceAccessAudit: evidence.evidenceAccessAudit,
+      accessAuditSummary: evidence.accessAuditSummary,
+      providerContract: evidence.providerContract,
+      providerReadiness: evidence.providerReadiness,
+    },
+  };
+}
+
+function stableStringify(value: unknown) {
+  return `${JSON.stringify(toStableJsonValue(value), null, 2)}\n`;
+}
+
+function toStableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(toStableJsonValue);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Object.keys(record)
+    .sort()
+    .reduce<Record<string, unknown>>((accumulator, key) => {
+      const entryValue = record[key];
+
+      if (entryValue !== undefined) {
+        accumulator[key] = toStableJsonValue(entryValue);
+      }
+
+      return accumulator;
+    }, {});
+}
+
+function sha256Hex(value: Buffer) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function isDocumentScopeError(error: unknown) {

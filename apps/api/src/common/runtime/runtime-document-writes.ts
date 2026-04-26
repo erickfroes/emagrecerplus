@@ -333,11 +333,202 @@ export type RuntimeDocumentOperationalDetail = {
   }>;
 };
 
+export type RuntimeDocumentLegalEvidenceDossier = {
+  id: string;
+  runtimeId: string;
+  documentId: string;
+  runtimeDocumentId: string;
+  documentVersionId: string | null;
+  runtimeDocumentVersionId: string | null;
+  printableArtifactId: string | null;
+  runtimePrintableArtifactId: string | null;
+  signatureRequestId: string | null;
+  runtimeSignatureRequestId: string | null;
+  evidenceStatus: "missing" | "partial" | "complete" | "failed" | "superseded";
+  verificationStatus: "not_required" | "pending" | "verified" | "failed";
+  providerCode: string | null;
+  externalRequestId: string | null;
+  externalEnvelopeId: string | null;
+  hashAlgorithm: string;
+  documentHash: string | null;
+  printableArtifactHash: string | null;
+  signedArtifactHash: string | null;
+  manifestHash: string | null;
+  verifiedAt: string | null;
+  failedAt: string | null;
+  failureReason: string | null;
+  consolidatedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  document: Record<string, unknown> | null;
+  patient: Record<string, unknown> | null;
+  professional: Record<string, unknown> | null;
+  author: Record<string, unknown> | null;
+  encounter: Record<string, unknown> | null;
+  template: Record<string, unknown> | null;
+  version: Record<string, unknown> | null;
+  printableArtifact: Record<string, unknown> | null;
+  signature: Record<string, unknown> | null;
+  signatories: Record<string, unknown>[];
+  provider: Record<string, unknown> | null;
+  hashes: Record<string, unknown> | null;
+  events: {
+    signature: Record<string, unknown>[];
+    dispatch: Record<string, unknown>[];
+  };
+  timestamps: Record<string, unknown> | null;
+  statusReasons: string[];
+  accessAudit: Record<string, unknown>[];
+  evidenceAccessAudit: Record<string, unknown>[];
+  accessAuditSummary: Record<string, unknown> | null;
+  providerContract: Record<string, unknown> | null;
+  evidencePackage?: RuntimeDocumentEvidencePackageSummary | null;
+  providerReadiness?: RuntimeDocumentSignatureProviderReadiness | null;
+};
+
+export type RuntimeDocumentEvidencePackageSummary = {
+  id: string | null;
+  runtimeId: string | null;
+  documentId: string;
+  runtimeDocumentId: string;
+  evidenceId: string | null;
+  runtimeEvidenceId: string | null;
+  documentVersionId: string | null;
+  runtimeDocumentVersionId: string | null;
+  signatureRequestId: string | null;
+  runtimeSignatureRequestId: string | null;
+  packageKind: "legal_evidence_json" | string;
+  packageStatus: "not_generated" | "generating" | "generated" | "failed" | "superseded";
+  contentType: string | null;
+  fileName: string | null;
+  checksum: string | null;
+  byteSize: number | null;
+  generatedAt: string | null;
+  failedAt: string | null;
+  failureReason: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  metadata: Record<string, unknown> | null;
+  events: Array<{
+    id: string;
+    runtimeId: string;
+    eventAction: string;
+    eventStatus: string;
+    signedUrlExpiresAt: string | null;
+    createdAt: string | null;
+    actor: {
+      runtimeId: string;
+      name: string;
+      email: string | null;
+    } | null;
+  }>;
+};
+
+export type RuntimeDocumentSignatureProviderReadiness = {
+  documentId: string;
+  runtimeDocumentId: string;
+  signatureRequestId: string | null;
+  runtimeSignatureRequestId: string | null;
+  providerCode: string | null;
+  providerMode: string | null;
+  adapterCode: string | null;
+  providerStatus: string | null;
+  externalDocumentId: string | null;
+  externalEnvelopeId: string | null;
+  providerEventHash: string | null;
+  rawEventHash: string | null;
+  providerPayloadHash: string | null;
+  hmacStrategy: string | null;
+  hmacValid: boolean;
+  verificationMethod: string | null;
+  verificationStatus: string | null;
+  verificationFailureReason: string | null;
+  verifiedAt: string | null;
+  providerRealAdapterImplemented: boolean;
+  credentialsPending: boolean;
+  latestDispatch: Record<string, unknown> | null;
+  latestEvent: Record<string, unknown> | null;
+};
+
+export type RuntimeDocumentEvidencePackagePreparation = {
+  id: string;
+  runtimeId: string;
+  documentId: string;
+  runtimeDocumentId: string;
+  evidenceId: string;
+  runtimeEvidenceId: string;
+  documentVersionId: string | null;
+  runtimeDocumentVersionId: string | null;
+  signatureRequestId: string | null;
+  runtimeSignatureRequestId: string | null;
+  packageKind: "legal_evidence_json";
+  packageStatus: "generating";
+  storageBucket: string;
+  storageObjectPath: string;
+  contentType: string;
+  fileName: string;
+};
+
 export type GetRuntimeDocumentOperationalDetailInput = {
   legacyTenantId: string;
   legacyUnitId?: string | null;
   documentReference: string;
   accessEventLimit?: number | null;
+};
+
+export type GetRuntimeDocumentLegalEvidenceDossierInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  accessEventLimit?: number | null;
+  legacyActorUserId?: string | null;
+  reconsolidate?: boolean;
+  auditAccess?: boolean;
+};
+
+export type GetRuntimeDocumentEvidencePackageSummaryInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  eventLimit?: number | null;
+};
+
+export type GetRuntimeDocumentSignatureProviderReadinessInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+};
+
+export type PrepareRuntimeDocumentEvidencePackageInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  legacyActorUserId?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type CompleteRuntimeDocumentEvidencePackageInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  packageReference: string;
+  packageStatus: "generated" | "failed";
+  checksum?: string | null;
+  byteSize?: number | null;
+  failureReason?: string | null;
+  legacyActorUserId?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type RecordRuntimeDocumentEvidencePackageAccessEventInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  documentReference: string;
+  packageReference: string;
+  accessStatus?: "granted" | "storage_error" | "denied";
+  signedUrlExpiresAt?: string | null;
+  legacyActorUserId?: string | null;
+  metadata?: Record<string, unknown>;
 };
 
 export type PrepareRuntimeDocumentAccessInput = {
@@ -390,6 +581,37 @@ function asStringOrNull(value: unknown) {
 
 function asBoolean(value: unknown) {
   return value === true;
+}
+
+function asNumberOrNull(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asRecordOrNull(value: unknown) {
+  return isRecord(value) ? value : null;
+}
+
+function asRecordArray(value: unknown) {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function assertNoStoragePathKeys(value: unknown, path = "payload") {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoStoragePathKeys(item, `${path}[${index}]`));
+    return;
+  }
+
+  if (!isRecord(value)) {
+    return;
+  }
+
+  for (const [key, entryValue] of Object.entries(value)) {
+    if (key === "storageObjectPath" || key === "storage_object_path") {
+      throw new Error(`RPC de evidencia juridica expôs chave interna em ${path}.${key}.`);
+    }
+
+    assertNoStoragePathKeys(entryValue, `${path}.${key}`);
+  }
 }
 
 function parseTemplate(value: unknown): RuntimeDocumentTemplate | null {
@@ -770,6 +992,222 @@ function parseRuntimeDocumentOperationalDetail(value: unknown): RuntimeDocumentO
   };
 }
 
+function parseRuntimeDocumentLegalEvidenceDossier(value: unknown): RuntimeDocumentLegalEvidenceDossier {
+  if (!isRecord(value)) {
+    throw new Error("RPC get_document_legal_evidence_dossier retornou payload invalido.");
+  }
+
+  assertNoStoragePathKeys(value);
+
+  const evidenceStatus = String(value.evidenceStatus ?? "missing");
+  const verificationStatus = String(value.verificationStatus ?? "not_required");
+  const events = isRecord(value.events) ? value.events : {};
+
+  return {
+    id: String(value.id ?? ""),
+    runtimeId: String(value.runtimeId ?? ""),
+    documentId: String(value.documentId ?? ""),
+    runtimeDocumentId: String(value.runtimeDocumentId ?? ""),
+    documentVersionId: asStringOrNull(value.documentVersionId),
+    runtimeDocumentVersionId: asStringOrNull(value.runtimeDocumentVersionId),
+    printableArtifactId: asStringOrNull(value.printableArtifactId),
+    runtimePrintableArtifactId: asStringOrNull(value.runtimePrintableArtifactId),
+    signatureRequestId: asStringOrNull(value.signatureRequestId),
+    runtimeSignatureRequestId: asStringOrNull(value.runtimeSignatureRequestId),
+    evidenceStatus: isKnownEvidenceStatus(evidenceStatus) ? evidenceStatus : "partial",
+    verificationStatus: isKnownVerificationStatus(verificationStatus) ? verificationStatus : "not_required",
+    providerCode: asStringOrNull(value.providerCode),
+    externalRequestId: asStringOrNull(value.externalRequestId),
+    externalEnvelopeId: asStringOrNull(value.externalEnvelopeId),
+    hashAlgorithm: String(value.hashAlgorithm ?? "sha256"),
+    documentHash: asStringOrNull(value.documentHash),
+    printableArtifactHash: asStringOrNull(value.printableArtifactHash),
+    signedArtifactHash: asStringOrNull(value.signedArtifactHash),
+    manifestHash: asStringOrNull(value.manifestHash),
+    verifiedAt: asStringOrNull(value.verifiedAt),
+    failedAt: asStringOrNull(value.failedAt),
+    failureReason: asStringOrNull(value.failureReason),
+    consolidatedAt: asStringOrNull(value.consolidatedAt),
+    createdAt: asStringOrNull(value.createdAt),
+    updatedAt: asStringOrNull(value.updatedAt),
+    document: asRecordOrNull(value.document),
+    patient: asRecordOrNull(value.patient),
+    professional: asRecordOrNull(value.professional),
+    author: asRecordOrNull(value.author),
+    encounter: asRecordOrNull(value.encounter),
+    template: asRecordOrNull(value.template),
+    version: asRecordOrNull(value.version),
+    printableArtifact: asRecordOrNull(value.printableArtifact),
+    signature: asRecordOrNull(value.signature),
+    signatories: asRecordArray(value.signatories),
+    provider: asRecordOrNull(value.provider),
+    hashes: asRecordOrNull(value.hashes),
+    events: {
+      signature: asRecordArray(events.signature),
+      dispatch: asRecordArray(events.dispatch),
+    },
+    timestamps: asRecordOrNull(value.timestamps),
+    statusReasons: Array.isArray(value.statusReasons)
+      ? value.statusReasons.map(String)
+      : [],
+    accessAudit: asRecordArray(value.accessAudit),
+    evidenceAccessAudit: asRecordArray(value.evidenceAccessAudit),
+    accessAuditSummary: asRecordOrNull(value.accessAuditSummary),
+    providerContract: asRecordOrNull(value.providerContract),
+    evidencePackage: value.evidencePackage === undefined ? undefined : parseRuntimeDocumentEvidencePackageSummary(value.evidencePackage),
+    providerReadiness:
+      value.providerReadiness === undefined
+        ? undefined
+        : parseRuntimeDocumentSignatureProviderReadiness(value.providerReadiness),
+  };
+}
+
+function parseRuntimeDocumentEvidencePackageSummary(value: unknown): RuntimeDocumentEvidencePackageSummary {
+  if (!isRecord(value)) {
+    return {
+      id: null,
+      runtimeId: null,
+      documentId: "",
+      runtimeDocumentId: "",
+      evidenceId: null,
+      runtimeEvidenceId: null,
+      documentVersionId: null,
+      runtimeDocumentVersionId: null,
+      signatureRequestId: null,
+      runtimeSignatureRequestId: null,
+      packageKind: "legal_evidence_json",
+      packageStatus: "not_generated",
+      contentType: null,
+      fileName: null,
+      checksum: null,
+      byteSize: null,
+      generatedAt: null,
+      failedAt: null,
+      failureReason: null,
+      createdAt: null,
+      updatedAt: null,
+      metadata: null,
+      events: [],
+    };
+  }
+
+  assertNoStoragePathKeys(value, "evidencePackage");
+
+  const packageStatus = String(value.packageStatus ?? "not_generated");
+  const events = Array.isArray(value.events)
+    ? value.events.filter(isRecord).map((event) => ({
+        id: String(event.id ?? ""),
+        runtimeId: String(event.runtimeId ?? ""),
+        eventAction: String(event.eventAction ?? "download"),
+        eventStatus: String(event.eventStatus ?? "granted"),
+        signedUrlExpiresAt: asStringOrNull(event.signedUrlExpiresAt),
+        createdAt: asStringOrNull(event.createdAt),
+        actor: isRecord(event.actor)
+          ? {
+              runtimeId: String(event.actor.runtimeId ?? ""),
+              name: String(event.actor.name ?? ""),
+              email: asStringOrNull(event.actor.email),
+            }
+          : null,
+      }))
+    : [];
+
+  return {
+    id: asStringOrNull(value.id),
+    runtimeId: asStringOrNull(value.runtimeId),
+    documentId: String(value.documentId ?? ""),
+    runtimeDocumentId: String(value.runtimeDocumentId ?? ""),
+    evidenceId: asStringOrNull(value.evidenceId),
+    runtimeEvidenceId: asStringOrNull(value.runtimeEvidenceId),
+    documentVersionId: asStringOrNull(value.documentVersionId),
+    runtimeDocumentVersionId: asStringOrNull(value.runtimeDocumentVersionId),
+    signatureRequestId: asStringOrNull(value.signatureRequestId),
+    runtimeSignatureRequestId: asStringOrNull(value.runtimeSignatureRequestId),
+    packageKind: String(value.packageKind ?? "legal_evidence_json"),
+    packageStatus: isKnownEvidencePackageStatus(packageStatus) ? packageStatus : "not_generated",
+    contentType: asStringOrNull(value.contentType),
+    fileName: asStringOrNull(value.fileName),
+    checksum: asStringOrNull(value.checksum),
+    byteSize: asNumberOrNull(value.byteSize),
+    generatedAt: asStringOrNull(value.generatedAt),
+    failedAt: asStringOrNull(value.failedAt),
+    failureReason: asStringOrNull(value.failureReason),
+    createdAt: asStringOrNull(value.createdAt),
+    updatedAt: asStringOrNull(value.updatedAt),
+    metadata: asRecordOrNull(value.metadata),
+    events,
+  };
+}
+
+function parseRuntimeDocumentSignatureProviderReadiness(
+  value: unknown
+): RuntimeDocumentSignatureProviderReadiness | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  assertNoStoragePathKeys(value, "providerReadiness");
+
+  return {
+    documentId: String(value.documentId ?? ""),
+    runtimeDocumentId: String(value.runtimeDocumentId ?? ""),
+    signatureRequestId: asStringOrNull(value.signatureRequestId),
+    runtimeSignatureRequestId: asStringOrNull(value.runtimeSignatureRequestId),
+    providerCode: asStringOrNull(value.providerCode),
+    providerMode: asStringOrNull(value.providerMode),
+    adapterCode: asStringOrNull(value.adapterCode),
+    providerStatus: asStringOrNull(value.providerStatus),
+    externalDocumentId: asStringOrNull(value.externalDocumentId),
+    externalEnvelopeId: asStringOrNull(value.externalEnvelopeId),
+    providerEventHash: asStringOrNull(value.providerEventHash),
+    rawEventHash: asStringOrNull(value.rawEventHash),
+    providerPayloadHash: asStringOrNull(value.providerPayloadHash),
+    hmacStrategy: asStringOrNull(value.hmacStrategy),
+    hmacValid: asBoolean(value.hmacValid),
+    verificationMethod: asStringOrNull(value.verificationMethod),
+    verificationStatus: asStringOrNull(value.verificationStatus),
+    verificationFailureReason: asStringOrNull(value.verificationFailureReason),
+    verifiedAt: asStringOrNull(value.verifiedAt),
+    providerRealAdapterImplemented: asBoolean(value.providerRealAdapterImplemented),
+    credentialsPending: asBoolean(value.credentialsPending),
+    latestDispatch: asRecordOrNull(value.latestDispatch),
+    latestEvent: asRecordOrNull(value.latestEvent),
+  };
+}
+
+function parseRuntimeDocumentEvidencePackagePreparation(
+  value: unknown
+): RuntimeDocumentEvidencePackagePreparation {
+  if (!isRecord(value)) {
+    throw new Error("RPC prepare_document_legal_evidence_package retornou payload invalido.");
+  }
+
+  const storageObjectPath = String(value.storageObjectPath ?? "");
+
+  if (!storageObjectPath) {
+    throw new Error("RPC prepare_document_legal_evidence_package nao retornou storageObjectPath.");
+  }
+
+  return {
+    id: String(value.id ?? ""),
+    runtimeId: String(value.runtimeId ?? ""),
+    documentId: String(value.documentId ?? ""),
+    runtimeDocumentId: String(value.runtimeDocumentId ?? ""),
+    evidenceId: String(value.evidenceId ?? ""),
+    runtimeEvidenceId: String(value.runtimeEvidenceId ?? ""),
+    documentVersionId: asStringOrNull(value.documentVersionId),
+    runtimeDocumentVersionId: asStringOrNull(value.runtimeDocumentVersionId),
+    signatureRequestId: asStringOrNull(value.signatureRequestId),
+    runtimeSignatureRequestId: asStringOrNull(value.runtimeSignatureRequestId),
+    packageKind: "legal_evidence_json",
+    packageStatus: "generating",
+    storageBucket: String(value.storageBucket ?? "patient-documents"),
+    storageObjectPath,
+    contentType: String(value.contentType ?? "application/json"),
+    fileName: String(value.fileName ?? "dossie-evidencia.json"),
+  };
+}
+
 function parseRuntimeDocumentAccessTarget(value: unknown): RuntimeDocumentAccessTarget {
   if (!isRecord(value)) {
     throw new Error("RPC prepare_patient_document_access nao retornou payload valido.");
@@ -800,6 +1238,24 @@ function parseRuntimeDocumentAccessTarget(value: unknown): RuntimeDocumentAccess
     storageBucket: String(value.storageBucket ?? "patient-documents"),
     storageObjectPath,
   };
+}
+
+function isKnownEvidenceStatus(
+  value: string
+): value is RuntimeDocumentLegalEvidenceDossier["evidenceStatus"] {
+  return ["missing", "partial", "complete", "failed", "superseded"].includes(value);
+}
+
+function isKnownVerificationStatus(
+  value: string
+): value is RuntimeDocumentLegalEvidenceDossier["verificationStatus"] {
+  return ["not_required", "pending", "verified", "failed"].includes(value);
+}
+
+function isKnownEvidencePackageStatus(
+  value: string
+): value is RuntimeDocumentEvidencePackageSummary["packageStatus"] {
+  return ["not_generated", "generating", "generated", "failed", "superseded"].includes(value);
 }
 
 export async function listRuntimeDocumentTemplates(params: {
@@ -862,6 +1318,119 @@ export async function getRuntimeDocumentOperationalDetail(
   }
 
   return parseRuntimeDocumentOperationalDetail(data);
+}
+
+export async function getRuntimeDocumentLegalEvidenceDossier(
+  params: GetRuntimeDocumentLegalEvidenceDossierInput
+): Promise<RuntimeDocumentLegalEvidenceDossier> {
+  const { data, error } = await supabaseAdmin.rpc("get_document_legal_evidence_dossier", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_access_event_limit: params.accessEventLimit ?? 10,
+    p_legacy_actor_user_id: params.legacyActorUserId ?? null,
+    p_reconsolidate: params.reconsolidate ?? true,
+    p_audit_access: params.auditAccess ?? true,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC get_document_legal_evidence_dossier: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentLegalEvidenceDossier(data);
+}
+
+export async function getRuntimeDocumentEvidencePackageSummary(
+  params: GetRuntimeDocumentEvidencePackageSummaryInput
+): Promise<RuntimeDocumentEvidencePackageSummary> {
+  const { data, error } = await supabaseAdmin.rpc("get_document_legal_evidence_package_summary", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_event_limit: params.eventLimit ?? 10,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC get_document_legal_evidence_package_summary: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentEvidencePackageSummary(data);
+}
+
+export async function getRuntimeDocumentSignatureProviderReadiness(
+  params: GetRuntimeDocumentSignatureProviderReadinessInput
+): Promise<RuntimeDocumentSignatureProviderReadiness | null> {
+  const { data, error } = await supabaseAdmin.rpc("get_document_signature_provider_readiness", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC get_document_signature_provider_readiness: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentSignatureProviderReadiness(data);
+}
+
+export async function prepareRuntimeDocumentEvidencePackage(
+  params: PrepareRuntimeDocumentEvidencePackageInput
+): Promise<RuntimeDocumentEvidencePackagePreparation> {
+  const { data, error } = await supabaseAdmin.rpc("prepare_document_legal_evidence_package", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_legacy_actor_user_id: params.legacyActorUserId ?? null,
+    p_metadata: params.metadata ?? {},
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC prepare_document_legal_evidence_package: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentEvidencePackagePreparation(data);
+}
+
+export async function completeRuntimeDocumentEvidencePackage(
+  params: CompleteRuntimeDocumentEvidencePackageInput
+): Promise<RuntimeDocumentEvidencePackageSummary> {
+  const { data, error } = await supabaseAdmin.rpc("complete_document_legal_evidence_package", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_package_id: params.packageReference,
+    p_package_status: params.packageStatus,
+    p_checksum: params.checksum ?? null,
+    p_byte_size: params.byteSize ?? null,
+    p_failure_reason: params.failureReason ?? null,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_legacy_actor_user_id: params.legacyActorUserId ?? null,
+    p_metadata: params.metadata ?? {},
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC complete_document_legal_evidence_package: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentEvidencePackageSummary(data);
+}
+
+export async function recordRuntimeDocumentEvidencePackageAccessEvent(
+  params: RecordRuntimeDocumentEvidencePackageAccessEventInput
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("record_document_legal_evidence_package_access_event", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentReference,
+    p_package_id: params.packageReference,
+    p_access_status: params.accessStatus ?? "granted",
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_signed_url_expires_at: params.signedUrlExpiresAt ?? null,
+    p_legacy_actor_user_id: params.legacyActorUserId ?? null,
+    p_request_metadata: params.metadata ?? {},
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC record_document_legal_evidence_package_access_event: ${error.message}`);
+  }
 }
 
 export async function prepareRuntimeDocumentAccess(

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from "@nestjs/common";
 import { AppContext } from "../../common/auth/app-context.decorator.ts";
 import { RequirePermissions } from "../../common/auth/require-permissions.decorator.ts";
 import type { AppRequestContext } from "../../common/auth/app-session.ts";
@@ -166,6 +166,23 @@ export class ClinicalController {
     @AppContext() context?: AppRequestContext
   ) {
     return this.clinicalService.getDocumentDetail(id, context);
+  }
+
+  @Get("documents/:id/evidence")
+  getDocumentEvidence(
+    @Param("id") id: string,
+    @AppContext() context?: AppRequestContext
+  ) {
+    return this.clinicalService.getDocumentEvidence(id, context);
+  }
+
+  @HttpCode(200)
+  @Post("documents/:id/evidence-package/access-link")
+  createDocumentEvidencePackageAccessLink(
+    @Param("id") id: string,
+    @AppContext() context?: AppRequestContext
+  ) {
+    return this.clinicalService.createDocumentEvidencePackageAccessLink(id, context);
   }
 
   @Get("documents/:id/access-links")
