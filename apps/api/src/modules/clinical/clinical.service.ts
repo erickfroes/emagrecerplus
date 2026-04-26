@@ -26,6 +26,7 @@ import {
   dispatchRuntimeDocumentSignatureRequest,
   getRuntimeDocumentEvidencePackageSummary,
   getRuntimeDocumentLegalEvidenceDossier,
+  getRuntimeDocumentOperationalHealth,
   getRuntimeDocumentOperationalDetail,
   getRuntimeDocumentSignatureProviderReadiness,
   getRuntimeEncounterDocumentSnapshot,
@@ -39,6 +40,7 @@ import {
   type RuntimeDocumentEvidencePackageSummary,
   type RuntimeDocumentAccessTarget,
   type RuntimeDocumentLegalEvidenceDossier,
+  type RuntimeDocumentOperationalHealth,
   type RuntimeDocumentSignatureProviderReadiness,
   type RuntimeDocumentOperationalDetail,
   type RuntimeDocumentTemplate,
@@ -210,6 +212,14 @@ type ListDocumentsQuery = {
   issuedTo?: string;
   limit?: string | number;
   offset?: string | number;
+};
+
+type DocumentOperationalHealthQuery = {
+  periodFrom?: string;
+  periodTo?: string;
+  provider?: string;
+  status?: string;
+  limit?: string | number;
 };
 
 @Injectable()
@@ -1249,6 +1259,85 @@ export class ClinicalService {
         unitId: currentUnitId,
       });
       throw new BadRequestException("Nao foi possivel listar os documentos acessiveis.");
+    }
+  }
+
+  async getDocumentOperationalHealth(
+    params: DocumentOperationalHealthQuery,
+    context?: AppRequestContext,
+    correlationIdHeader?: string
+  ) {
+    const correlationId = resolveDocumentCorrelationId(correlationIdHeader);
+    const startedAt = Date.now();
+    const tenantId = await resolveTenantIdForRequest(this.prisma, context);
+    const currentUnitId = await resolveUnitIdForRequest(
+      this.prisma,
+      context,
+      process.env.DEFAULT_UNIT_CODE
+    );
+    const limit = normalizeDocumentListNumber(params.limit, 25, 1, 100);
+    const periodFrom = normalizeDocumentListDate(params.periodFrom, "periodFrom", "from");
+    const periodTo = normalizeDocumentListDate(params.periodTo, "periodTo", "to");
+
+    if (periodFrom && periodTo && Date.parse(periodFrom) > Date.parse(periodTo)) {
+      throw new BadRequestException("periodFrom deve ser anterior ou igual a periodTo.");
+    }
+
+    if (!this.isRealAuthEnabled()) {
+      const mockHealth = buildMockDocumentOperationalHealth({
+        limit,
+        periodFrom,
+        periodTo,
+        provider: params.provider,
+        status: params.status,
+      });
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        durationMs: Date.now() - startedAt,
+        event: "document.operational_health_loaded",
+        mode: "mock",
+        operation: "get_document_operational_health",
+        tenantId,
+        unitId: currentUnitId,
+      });
+      return mockHealth;
+    }
+
+    try {
+      const health = await getRuntimeDocumentOperationalHealth({
+        legacyTenantId: tenantId,
+        legacyUnitId: currentUnitId,
+        periodFrom,
+        periodTo,
+        provider: params.provider,
+        status: params.status,
+        limit,
+      });
+      logDocumentOperationalEvent("info", {
+        correlationId,
+        dispatchFailed: health.counts.dispatchFailed,
+        durationMs: Date.now() - startedAt,
+        event: "document.operational_health_loaded",
+        hmacFailed: health.counts.webhookHmacFailed,
+        operation: "get_document_operational_health",
+        overallStatus: health.overallStatus,
+        packageFailed: health.counts.packageFailed,
+        providerConfigMissing: health.counts.providerConfigMissing,
+        tenantId,
+        unitId: currentUnitId,
+      });
+      return health;
+    } catch (error) {
+      logDocumentOperationalEvent("error", {
+        correlationId,
+        durationMs: Date.now() - startedAt,
+        errorMessage: safeDocumentErrorMessage(error),
+        event: "document.operational_health_failed",
+        operation: "get_document_operational_health",
+        tenantId,
+        unitId: currentUnitId,
+      });
+      throw new BadRequestException("Nao foi possivel consultar a saude operacional documental.");
     }
   }
 
@@ -3408,6 +3497,52 @@ function buildMockDocumentSignatureProviderReadiness(
     credentialsPending: false,
     latestDispatch: null,
     latestEvent: null,
+  };
+}
+
+function buildMockDocumentOperationalHealth(params: {
+  limit: number;
+  periodFrom: string | null;
+  periodTo: string | null;
+  provider?: string;
+  status?: string;
+}): RuntimeDocumentOperationalHealth {
+  const now = new Date();
+  const periodTo = params.periodTo ?? now.toISOString();
+  const periodFrom =
+    params.periodFrom ?? new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+  return {
+    generatedAt: now.toISOString(),
+    overallStatus: "ok",
+    period: {
+      from: periodFrom,
+      to: periodTo,
+    },
+    filters: {
+      provider: params.provider?.trim() || null,
+      status: params.status?.trim() || null,
+      limit: params.limit,
+    },
+    summary: [
+      { key: "dispatch_failed", label: "Dispatch com falha", count: 0, status: "ok" },
+      { key: "webhook_hmac_failed", label: "HMAC invalido", count: 0, status: "ok" },
+      { key: "webhook_duplicate", label: "Webhooks duplicados", count: 0, status: "ok" },
+      { key: "package_failed", label: "Pacotes com falha", count: 0, status: "ok" },
+      { key: "evidence_pending", label: "Evidencias pendentes", count: 0, status: "ok" },
+      { key: "provider_config_missing", label: "Provider sem configuracao", count: 0, status: "ok" },
+    ],
+    counts: {
+      dispatchFailed: 0,
+      webhookHmacFailed: 0,
+      webhookDuplicate: 0,
+      packageFailed: 0,
+      evidencePending: 0,
+      providerConfigMissing: 0,
+    },
+    latestDispatches: [],
+    latestWebhooks: [],
+    recentFailures: [],
   };
 }
 

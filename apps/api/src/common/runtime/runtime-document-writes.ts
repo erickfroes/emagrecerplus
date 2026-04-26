@@ -451,6 +451,49 @@ export type RuntimeDocumentSignatureProviderReadiness = {
   latestEvent: Record<string, unknown> | null;
 };
 
+export type RuntimeDocumentOperationalHealthStatus = "failure" | "ok" | "pending" | "warning";
+
+export type RuntimeDocumentOperationalHealth = {
+  generatedAt: string | null;
+  overallStatus: RuntimeDocumentOperationalHealthStatus;
+  period: {
+    from: string | null;
+    to: string | null;
+  };
+  filters: {
+    provider: string | null;
+    status: string | null;
+    limit: number;
+  };
+  summary: Array<{
+    key: string;
+    label: string;
+    count: number;
+    status: RuntimeDocumentOperationalHealthStatus;
+  }>;
+  counts: {
+    dispatchFailed: number;
+    webhookHmacFailed: number;
+    webhookDuplicate: number;
+    packageFailed: number;
+    evidencePending: number;
+    providerConfigMissing: number;
+  };
+  latestDispatches: Record<string, unknown>[];
+  latestWebhooks: Record<string, unknown>[];
+  recentFailures: Record<string, unknown>[];
+};
+
+export type GetRuntimeDocumentOperationalHealthInput = {
+  legacyTenantId: string;
+  legacyUnitId?: string | null;
+  periodFrom?: string | null;
+  periodTo?: string | null;
+  provider?: string | null;
+  status?: string | null;
+  limit?: number | null;
+};
+
 export type RuntimeDocumentEvidencePackagePreparation = {
   id: string;
   runtimeId: string;
@@ -1176,6 +1219,49 @@ function parseRuntimeDocumentSignatureProviderReadiness(
   };
 }
 
+function parseRuntimeDocumentOperationalHealth(value: unknown): RuntimeDocumentOperationalHealth {
+  if (!isRecord(value)) {
+    throw new Error("RPC get_document_operational_health retornou payload invalido.");
+  }
+
+  assertNoStoragePathKeys(value, "documentOperationalHealth");
+
+  const period = isRecord(value.period) ? value.period : {};
+  const filters = isRecord(value.filters) ? value.filters : {};
+  const counts = isRecord(value.counts) ? value.counts : {};
+
+  return {
+    generatedAt: asStringOrNull(value.generatedAt),
+    overallStatus: parseOperationalHealthStatus(value.overallStatus),
+    period: {
+      from: asStringOrNull(period.from),
+      to: asStringOrNull(period.to),
+    },
+    filters: {
+      provider: asStringOrNull(filters.provider),
+      status: asStringOrNull(filters.status),
+      limit: asNumberOrNull(filters.limit) ?? 25,
+    },
+    summary: asRecordArray(value.summary).map((item) => ({
+      key: String(item.key ?? ""),
+      label: String(item.label ?? ""),
+      count: asNumberOrNull(item.count) ?? 0,
+      status: parseOperationalHealthStatus(item.status),
+    })),
+    counts: {
+      dispatchFailed: asNumberOrNull(counts.dispatchFailed) ?? 0,
+      webhookHmacFailed: asNumberOrNull(counts.webhookHmacFailed) ?? 0,
+      webhookDuplicate: asNumberOrNull(counts.webhookDuplicate) ?? 0,
+      packageFailed: asNumberOrNull(counts.packageFailed) ?? 0,
+      evidencePending: asNumberOrNull(counts.evidencePending) ?? 0,
+      providerConfigMissing: asNumberOrNull(counts.providerConfigMissing) ?? 0,
+    },
+    latestDispatches: asRecordArray(value.latestDispatches),
+    latestWebhooks: asRecordArray(value.latestWebhooks),
+    recentFailures: asRecordArray(value.recentFailures),
+  };
+}
+
 function parseRuntimeDocumentEvidencePackagePreparation(
   value: unknown
 ): RuntimeDocumentEvidencePackagePreparation {
@@ -1257,6 +1343,17 @@ function isKnownEvidencePackageStatus(
   value: string
 ): value is RuntimeDocumentEvidencePackageSummary["packageStatus"] {
   return ["not_generated", "generating", "generated", "failed", "superseded"].includes(value);
+}
+
+function parseOperationalHealthStatus(value: unknown): RuntimeDocumentOperationalHealthStatus {
+  switch (value) {
+    case "failure":
+    case "pending":
+    case "warning":
+      return value;
+    default:
+      return "ok";
+  }
 }
 
 export async function listRuntimeDocumentTemplates(params: {
@@ -1372,6 +1469,26 @@ export async function getRuntimeDocumentSignatureProviderReadiness(
   }
 
   return parseRuntimeDocumentSignatureProviderReadiness(data);
+}
+
+export async function getRuntimeDocumentOperationalHealth(
+  params: GetRuntimeDocumentOperationalHealthInput
+): Promise<RuntimeDocumentOperationalHealth> {
+  const { data, error } = await supabaseAdmin.rpc("get_document_operational_health", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_legacy_unit_id: params.legacyUnitId ?? null,
+    p_period_from: params.periodFrom ?? null,
+    p_period_to: params.periodTo ?? null,
+    p_provider: params.provider ?? null,
+    p_status: params.status ?? null,
+    p_limit: params.limit ?? 25,
+  });
+
+  if (error) {
+    throw new Error(`Falha ao executar RPC get_document_operational_health: ${error.message}`);
+  }
+
+  return parseRuntimeDocumentOperationalHealth(data);
 }
 
 export async function prepareRuntimeDocumentEvidencePackage(

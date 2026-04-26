@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useDeferredValue, useMemo, useState } from "react";
+import { Activity } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -135,6 +137,15 @@ export default function ClinicalDocumentsPage() {
       <PageHeader
         title="Centro documental"
         description="Localize documentos clinicos e gere acesso temporario auditado sem expor o bucket privado."
+        actions={
+          <Link
+            href="/clinical/documents/ops/health"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-border bg-surface px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/15 focus-visible:ring-offset-2"
+          >
+            <Activity className="h-4 w-4" />
+            Saude documental
+          </Link>
+        }
       />
 
       {!canViewDocuments ? (
