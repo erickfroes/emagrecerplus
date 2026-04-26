@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -14,6 +14,7 @@ import { assertDatabaseAvailable } from "./smoke-utils";
 
 const apiPort = Number(process.env.API_SMOKE_PORT ?? 3101);
 const baseUrl = `http://127.0.0.1:${apiPort}`;
+const d4signSimulatedWebhookSecret = "emagreceplus-d4sign-simulated-webhook-secret";
 
 const databaseUrl = process.env.DATABASE_URL ?? "";
 assert(databaseUrl, "DATABASE_URL ausente.");
@@ -210,6 +211,23 @@ async function requestJsonWithToken<T = unknown>(
   );
 }
 
+async function requestJsonWithoutAuth<T = unknown>(
+  path: string,
+  init?: RequestInit,
+  expectedStatus = 200
+): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, init);
+  const text = await response.text();
+
+  assert.equal(
+    response.status,
+    expectedStatus,
+    `${init?.method ?? "GET"} ${path} sem token retornou ${response.status}: ${text}`
+  );
+
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
 async function requestEdgeFunctionJson<T = unknown>(
   functionName: string,
   body: unknown,
@@ -234,6 +252,40 @@ async function requestEdgeFunctionJson<T = unknown>(
   );
 
   return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+async function requestEdgeFunctionRawJson<T = unknown>(
+  functionName: string,
+  rawBody: string,
+  headers: HeadersInit,
+  expectedStatus = 200
+) {
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  assert(supabaseUrl, "SUPABASE_URL ausente para validar Edge Functions.");
+
+  const requestHeaders = new Headers(headers);
+  requestHeaders.set("Content-Type", "application/json");
+
+  const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
+    method: "POST",
+    headers: requestHeaders,
+    body: rawBody,
+  });
+  const text = await response.text();
+
+  assert.equal(
+    response.status,
+    expectedStatus,
+    `POST /functions/v1/${functionName} retornou ${response.status}: ${text}`
+  );
+
+  return text ? (JSON.parse(text) as T) : (undefined as T);
+}
+
+function createD4SignSimulatedHmacHeader(payload: string) {
+  return `sha256=${createHmac("sha256", d4signSimulatedWebhookSecret)
+    .update(payload)
+    .digest("hex")}`;
 }
 
 function formatDateQuery(value: Date) {
@@ -357,6 +409,63 @@ async function assertDirectDocumentBrokerRpcDenied(params: {
   });
 
   assertDirectDocumentBrokerRpcRejected(`${params.label}: get_patient_document_operational_detail`, detailResult);
+
+  const evidenceResult = await params.client.rpc("get_document_legal_evidence_dossier", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_legacy_unit_id: params.legacyUnitId,
+    p_access_event_limit: 5,
+    p_legacy_actor_user_id: null,
+    p_reconsolidate: true,
+    p_audit_access: false,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(`${params.label}: get_document_legal_evidence_dossier`, evidenceResult);
+
+  const consolidateResult = await params.client.rpc("consolidate_document_legal_evidence", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_legacy_unit_id: params.legacyUnitId,
+    p_signature_request_id: null,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(`${params.label}: consolidate_document_legal_evidence`, consolidateResult);
+
+  const packageSummaryResult = await params.client.rpc("get_document_legal_evidence_package_summary", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_legacy_unit_id: params.legacyUnitId,
+    p_event_limit: 5,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(
+    `${params.label}: get_document_legal_evidence_package_summary`,
+    packageSummaryResult
+  );
+
+  const preparePackageResult = await params.client.rpc("prepare_document_legal_evidence_package", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_legacy_unit_id: params.legacyUnitId,
+    p_legacy_actor_user_id: null,
+    p_metadata: {},
+  });
+
+  assertDirectDocumentBrokerRpcRejected(
+    `${params.label}: prepare_document_legal_evidence_package`,
+    preparePackageResult
+  );
+
+  const providerReadinessResult = await params.client.rpc("get_document_signature_provider_readiness", {
+    p_legacy_tenant_id: params.legacyTenantId,
+    p_document_id: params.documentId,
+    p_legacy_unit_id: params.legacyUnitId,
+  });
+
+  assertDirectDocumentBrokerRpcRejected(
+    `${params.label}: get_document_signature_provider_readiness`,
+    providerReadinessResult
+  );
 }
 
 async function waitForHealth() {
@@ -3615,6 +3724,185 @@ async function main() {
     );
 
     if (isRealAuthEnabled()) {
+      await requestJsonWithoutAuth(
+        `/documents/${createdDocument.id}/evidence`,
+        undefined,
+        401
+      );
+
+      assert(limitedAccessToken, "Token de usuario sem permissao clinica ausente para validar evidencia.");
+      await requestJsonWithToken(
+        `/documents/${createdDocument.id}/evidence`,
+        limitedAccessToken,
+        undefined,
+        403
+      );
+
+      await requestJson(
+        `/documents/${deterministicUuid("missing-document-evidence", String(timestamp))}/evidence`,
+        undefined,
+        404
+      );
+
+      const documentEvidenceBeforeSignature = await requestJson<{
+        documentId: string;
+        evidenceStatus: string;
+        verificationStatus: string;
+        printableArtifactHash?: string | null;
+        documentHash?: string | null;
+        signature?: unknown;
+        accessAudit?: unknown[];
+        evidenceAccessAudit?: unknown[];
+        evidencePackage?: {
+          packageStatus?: string;
+          storageObjectPath?: string;
+        } | null;
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert.equal(
+        documentEvidenceBeforeSignature.documentId,
+        createdDocument.id,
+        "GET /documents/:id/evidence retornou documento inesperado."
+      );
+      assert.equal(
+        documentEvidenceBeforeSignature.evidenceStatus,
+        "partial",
+        "GET /documents/:id/evidence deveria retornar evidencia parcial antes da assinatura."
+      );
+      assert.equal(
+        documentEvidenceBeforeSignature.verificationStatus,
+        "not_required",
+        "GET /documents/:id/evidence deveria marcar verificacao como nao exigida no provider mock parcial."
+      );
+      assert(
+        documentEvidenceBeforeSignature.printableArtifactHash || documentEvidenceBeforeSignature.documentHash,
+        "GET /documents/:id/evidence nao retornou hash disponivel para o artefato/documento."
+      );
+      assert(Array.isArray(documentEvidenceBeforeSignature.accessAudit), "GET /documents/:id/evidence nao retornou accessAudit.");
+      assert(
+        Array.isArray(documentEvidenceBeforeSignature.evidenceAccessAudit),
+        "GET /documents/:id/evidence nao retornou evidenceAccessAudit."
+      );
+      assert.equal(
+        documentEvidenceBeforeSignature.evidencePackage?.packageStatus,
+        "not_generated",
+        "GET /documents/:id/evidence deveria indicar pacote ainda nao gerado."
+      );
+      assert(
+        !JSON.stringify(documentEvidenceBeforeSignature).includes("storageObjectPath"),
+        "GET /documents/:id/evidence nao deve expor storageObjectPath antes da assinatura."
+      );
+
+      await requestJsonWithoutAuth(
+        `/documents/${createdDocument.id}/evidence-package/access-link`,
+        {
+          method: "POST",
+        },
+        401
+      );
+
+      await requestJsonWithToken(
+        `/documents/${createdDocument.id}/evidence-package/access-link`,
+        limitedAccessToken,
+        {
+          method: "POST",
+        },
+        403
+      );
+
+      await requestJson(
+        `/documents/${deterministicUuid("missing-document-evidence-package", String(timestamp))}/evidence-package/access-link`,
+        {
+          method: "POST",
+        },
+        404
+      );
+
+      const partialEvidencePackage = await requestJson<{
+        documentId: string;
+        generatedAt: string;
+        expiresAt: string;
+        package: {
+          id: string;
+          packageStatus: string;
+          checksum?: string | null;
+          byteSize?: number | null;
+          contentType?: string | null;
+          fileName?: string | null;
+          storageObjectPath?: string;
+        };
+        download: {
+          downloadUrl: string;
+          expiresAt: string;
+          fileName: string;
+          storageObjectPath?: string;
+        };
+        storageObjectPath?: string;
+      }>(
+        `/documents/${createdDocument.id}/evidence-package/access-link`,
+        {
+          method: "POST",
+        }
+      );
+
+      assert.equal(
+        partialEvidencePackage.documentId,
+        createdDocument.id,
+        "POST /documents/:id/evidence-package/access-link retornou documento inesperado."
+      );
+      assert.equal(
+        partialEvidencePackage.package.packageStatus,
+        "generated",
+        "POST /documents/:id/evidence-package/access-link deveria gerar pacote parcial."
+      );
+      assert(
+        partialEvidencePackage.package.checksum && partialEvidencePackage.package.byteSize,
+        "POST /documents/:id/evidence-package/access-link nao retornou checksum e tamanho."
+      );
+      assert.equal(
+        partialEvidencePackage.package.contentType,
+        "application/json",
+        "POST /documents/:id/evidence-package/access-link deveria gerar JSON."
+      );
+      assert(
+        typeof partialEvidencePackage.download.downloadUrl === "string" &&
+          partialEvidencePackage.download.downloadUrl.length > 0,
+        "POST /documents/:id/evidence-package/access-link nao retornou signed URL temporaria."
+      );
+      assert(
+        !JSON.stringify(partialEvidencePackage).includes("storageObjectPath"),
+        "POST /documents/:id/evidence-package/access-link nao deve expor storageObjectPath."
+      );
+
+      const documentEvidenceAfterPackage = await requestJson<{
+        evidencePackage?: {
+          packageStatus?: string;
+          checksum?: string | null;
+          events?: Array<{
+            eventAction?: string | null;
+            eventStatus?: string | null;
+            storageObjectPath?: string;
+          }>;
+          storageObjectPath?: string;
+        } | null;
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert.equal(
+        documentEvidenceAfterPackage.evidencePackage?.packageStatus,
+        "generated",
+        "GET /documents/:id/evidence deveria refletir pacote gerado."
+      );
+      assert(
+        documentEvidenceAfterPackage.evidencePackage?.events?.some(
+          (event) => event.eventAction === "download" && event.eventStatus === "granted"
+        ),
+        "GET /documents/:id/evidence nao retornou auditoria de download do pacote."
+      );
+      assert(
+        !JSON.stringify(documentEvidenceAfterPackage).includes("storageObjectPath"),
+        "GET /documents/:id/evidence nao deve expor storageObjectPath do pacote."
+      );
+
       const listedDocument = listedDocuments.items.find((item) => item.id === createdDocument.id);
       assert(listedDocument, "GET /documents nao retornou o documento emitido fora do encounter.");
       assert.equal(
@@ -3737,6 +4025,38 @@ async function main() {
       assert(
         !JSON.stringify(documentDetailAfterAccess).includes("storageObjectPath"),
         "GET /documents/:id nao deve expor storageObjectPath nos eventos de auditoria."
+      );
+
+      const documentEvidenceAfterAccess = await requestJson<{
+        accessAudit?: Array<{
+          accessAction: string;
+          accessStatus: string;
+          storageObjectPath?: string;
+        }>;
+        evidenceAccessAudit?: Array<{
+          action?: string | null;
+        }>;
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert(
+        documentEvidenceAfterAccess.accessAudit?.some(
+          (event) => event.accessAction === "open" && event.accessStatus === "granted"
+        ),
+        "GET /documents/:id/evidence nao retornou auditoria de abertura do broker."
+      );
+      assert(
+        documentEvidenceAfterAccess.accessAudit?.some(
+          (event) => event.accessAction === "download" && event.accessStatus === "granted"
+        ),
+        "GET /documents/:id/evidence nao retornou auditoria de download do broker."
+      );
+      assert(
+        documentEvidenceAfterAccess.evidenceAccessAudit?.some((event) => event.action === "read"),
+        "GET /documents/:id/evidence nao registrou auditoria de consulta do dossie."
+      );
+      assert(
+        !JSON.stringify(documentEvidenceAfterAccess).includes("storageObjectPath"),
+        "GET /documents/:id/evidence nao deve expor storageObjectPath na auditoria."
       );
 
       const previewArtifact = documentWithArtifact.printableArtifacts?.find(
@@ -4026,6 +4346,154 @@ async function main() {
         "GET /documents/:id nao retornou evento de assinatura do webhook."
       );
 
+      const legalEvidenceAfterSignature = await requestJson<{
+        documentId: string;
+        evidenceStatus: string;
+        verificationStatus: string;
+        providerCode?: string | null;
+        externalEnvelopeId?: string | null;
+        printableArtifactHash?: string | null;
+        documentHash?: string | null;
+        signature?: {
+          requestStatus?: string | null;
+          providerCode?: string | null;
+          externalEnvelopeId?: string | null;
+        } | null;
+        signatories?: Array<{
+          status?: string | null;
+        }>;
+        events?: {
+          signature?: Array<{
+            eventType?: string | null;
+          }>;
+          dispatch?: Array<{
+            dispatchStatus?: string | null;
+          }>;
+        };
+        accessAudit?: unknown[];
+        evidenceAccessAudit?: unknown[];
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert.equal(
+        legalEvidenceAfterSignature.documentId,
+        createdDocument.id,
+        "GET /documents/:id/evidence apos assinatura retornou documento inesperado."
+      );
+      assert.equal(
+        legalEvidenceAfterSignature.evidenceStatus,
+        "complete",
+        "GET /documents/:id/evidence deveria consolidar evidencia completa para provider mock assinado."
+      );
+      assert.equal(
+        legalEvidenceAfterSignature.verificationStatus,
+        "not_required",
+        "GET /documents/:id/evidence deveria manter verificacao nao exigida para provider mock."
+      );
+      assert.equal(
+        legalEvidenceAfterSignature.signature?.requestStatus,
+        "signed",
+        "GET /documents/:id/evidence nao refletiu assinatura signed."
+      );
+      assert(
+        legalEvidenceAfterSignature.signatories?.some((signatory) => signatory.status === "signed"),
+        "GET /documents/:id/evidence nao retornou signatario assinado."
+      );
+      assert(
+        legalEvidenceAfterSignature.events?.signature?.some((event) => event.eventType === "signed"),
+        "GET /documents/:id/evidence nao retornou evento principal de webhook signed."
+      );
+      assert(
+        legalEvidenceAfterSignature.events?.dispatch?.some((event) => event.dispatchStatus === "sent"),
+        "GET /documents/:id/evidence nao retornou evento principal de dispatch sent."
+      );
+      assert(
+        legalEvidenceAfterSignature.printableArtifactHash || legalEvidenceAfterSignature.documentHash,
+        "GET /documents/:id/evidence completo nao retornou hash do artefato/documento."
+      );
+      assert(
+        legalEvidenceAfterSignature.providerCode === "mock" ||
+          legalEvidenceAfterSignature.signature?.providerCode === "mock",
+        "GET /documents/:id/evidence nao preservou provider mock."
+      );
+      assert(
+        legalEvidenceAfterSignature.externalEnvelopeId ||
+          legalEvidenceAfterSignature.signature?.externalEnvelopeId,
+        "GET /documents/:id/evidence nao retornou envelope/id externo disponivel."
+      );
+      assert(Array.isArray(legalEvidenceAfterSignature.accessAudit), "GET /documents/:id/evidence completo nao retornou accessAudit.");
+      assert(
+        Array.isArray(legalEvidenceAfterSignature.evidenceAccessAudit),
+        "GET /documents/:id/evidence completo nao retornou evidenceAccessAudit."
+      );
+      assert(
+        !JSON.stringify(legalEvidenceAfterSignature).includes("storageObjectPath"),
+        "GET /documents/:id/evidence nao deve expor storageObjectPath apos assinatura."
+      );
+
+      const completeEvidencePackage = await requestJson<{
+        documentId: string;
+        package: {
+          packageStatus: string;
+          checksum?: string | null;
+          byteSize?: number | null;
+        };
+        download: {
+          downloadUrl: string;
+          fileName: string;
+        };
+        storageObjectPath?: string;
+      }>(
+        `/documents/${createdDocument.id}/evidence-package/access-link`,
+        {
+          method: "POST",
+        }
+      );
+
+      assert.equal(
+        completeEvidencePackage.documentId,
+        createdDocument.id,
+        "POST /documents/:id/evidence-package/access-link apos assinatura retornou documento inesperado."
+      );
+      assert.equal(
+        completeEvidencePackage.package.packageStatus,
+        "generated",
+        "POST /documents/:id/evidence-package/access-link deveria gerar pacote completo."
+      );
+      assert(
+        completeEvidencePackage.package.checksum && completeEvidencePackage.package.byteSize,
+        "POST /documents/:id/evidence-package/access-link completo nao retornou checksum e tamanho."
+      );
+      assert(
+        completeEvidencePackage.download.downloadUrl && completeEvidencePackage.download.fileName,
+        "POST /documents/:id/evidence-package/access-link completo nao retornou download seguro."
+      );
+      assert(
+        !JSON.stringify(completeEvidencePackage).includes("storageObjectPath"),
+        "POST /documents/:id/evidence-package/access-link completo nao deve expor storageObjectPath."
+      );
+
+      const legalEvidenceAfterCompletePackage = await requestJson<{
+        evidencePackage?: {
+          packageStatus?: string;
+          events?: Array<{
+            eventAction?: string | null;
+            eventStatus?: string | null;
+          }>;
+        } | null;
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert.equal(
+        legalEvidenceAfterCompletePackage.evidencePackage?.packageStatus,
+        "generated",
+        "GET /documents/:id/evidence deveria refletir pacote completo gerado."
+      );
+      assert(
+        legalEvidenceAfterCompletePackage.evidencePackage?.events?.some(
+          (event) => event.eventAction === "download" && event.eventStatus === "granted"
+        ),
+        "GET /documents/:id/evidence nao retornou auditoria de download do pacote completo."
+      );
+
       const listedDocumentsBySignedSignature = await requestJson<{
         items: Array<{ id: string }>;
       }>(
@@ -4038,6 +4506,261 @@ async function main() {
         listedDocumentsBySignedSignature.items.some((item) => item.id === createdDocument.id),
         "GET /documents com signatureStatus=signed nao retornou o documento assinado."
       );
+
+      logStep("Validando readiness D4Sign simulated sem chamada externa");
+
+      const d4signSimulatedDocument = await requestJson<{
+        signatureRequests?: Array<{
+          id: string;
+          externalRequestId?: string | null;
+          latestDispatch?: {
+            dispatchStatus?: string | null;
+            providerCode?: string | null;
+          } | null;
+          providerCode?: string | null;
+          requestStatus: string;
+        }>;
+      }>(
+        `/documents/${createdDocument.id}/signature-requests`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            signerType: "patient",
+            signerEmail: "paciente-smoke-d4sign@emagreceplus.local",
+            providerCode: "d4sign_simulated",
+          }),
+        },
+        201
+      );
+
+      const d4signSimulatedRequest = d4signSimulatedDocument.signatureRequests?.find(
+        (request) => request.providerCode === "d4sign" || request.providerCode === "d4sign_simulated"
+      );
+
+      assert(d4signSimulatedRequest?.id, "D4Sign simulated nao retornou solicitacao de assinatura.");
+      assert.equal(
+        d4signSimulatedRequest.latestDispatch?.dispatchStatus,
+        "sent",
+        "D4Sign simulated deveria registrar dispatch sent local."
+      );
+      assert(
+        d4signSimulatedRequest.externalRequestId,
+        "D4Sign simulated deveria gerar externalDocumentId fake estavel."
+      );
+
+      const invalidD4SignWebhookBody = JSON.stringify({
+        documentId: createdDocument.id,
+        eventAt: new Date().toISOString(),
+        eventId: `d4sign-invalid-hmac-${Date.now()}`,
+        eventType: "signed",
+        externalDocumentId: d4signSimulatedRequest.externalRequestId,
+        fixture: "invalid_hmac",
+        legacyTenantId: tenant.id,
+        provider: "d4sign",
+        providerMode: "simulated",
+        signatureRequestId: d4signSimulatedRequest.id,
+      });
+
+      await requestEdgeFunctionRawJson(
+        "document-signature-webhook",
+        invalidD4SignWebhookBody,
+        {
+          "Content-Hmac": "sha256=0000000000000000000000000000000000000000000000000000000000000000",
+        },
+        401
+      );
+
+      const d4signEventId = `d4sign-valid-${Date.now()}`;
+      const d4signWebhookPayload = {
+        documentId: createdDocument.id,
+        eventAt: new Date().toISOString(),
+        eventId: d4signEventId,
+        eventType: "finalized",
+        externalDocumentId: d4signSimulatedRequest.externalRequestId,
+        fixture: "finalized_document",
+        hmacStrategy: "uuid",
+        legacyTenantId: tenant.id,
+        provider: "d4sign",
+        providerMode: "simulated",
+        signatureRequestId: d4signSimulatedRequest.id,
+      };
+      const d4signWebhookBody = JSON.stringify(d4signWebhookPayload);
+      const d4signWebhookHmac = createD4SignSimulatedHmacHeader(
+        d4signSimulatedRequest.externalRequestId
+      );
+      const d4signWebhook = await requestEdgeFunctionRawJson<{
+        duplicate?: boolean;
+        hmac?: {
+          valid?: boolean;
+          strategy?: string;
+        };
+        processingStatus: string;
+        providerMode?: string | null;
+        requestStatus: string;
+      }>(
+        "document-signature-webhook",
+        d4signWebhookBody,
+        {
+          "Content-Hmac": d4signWebhookHmac,
+        }
+      );
+
+      assert.equal(
+        d4signWebhook.processingStatus,
+        "processed",
+        "D4Sign simulated com HMAC valido deveria ser processado."
+      );
+      assert.equal(
+        d4signWebhook.hmac?.valid,
+        true,
+        "D4Sign simulated deveria validar Content-Hmac fake."
+      );
+      assert.equal(
+        d4signWebhook.hmac?.strategy,
+        "uuid",
+        "D4Sign simulated deveria usar estrategia HMAC uuid no smoke."
+      );
+      assert.equal(
+        d4signWebhook.requestStatus,
+        "signed",
+        "D4Sign finalized deveria normalizar para assinatura signed."
+      );
+
+      const duplicateD4SignWebhook = await requestEdgeFunctionRawJson<{
+        duplicate?: boolean;
+        processingStatus: string;
+      }>(
+        "document-signature-webhook",
+        d4signWebhookBody,
+        {
+          "Content-Hmac": d4signWebhookHmac,
+        }
+      );
+
+      assert.equal(
+        duplicateD4SignWebhook.processingStatus,
+        "processed",
+        "D4Sign simulated duplicado deveria reutilizar processamento anterior."
+      );
+      assert.equal(
+        duplicateD4SignWebhook.duplicate,
+        true,
+        "D4Sign simulated duplicado deveria retornar duplicate=true."
+      );
+
+      const d4signEvidence = await requestJson<{
+        providerReadiness?: {
+          credentialsPending?: boolean;
+          externalDocumentId?: string | null;
+          hmacValid?: boolean;
+          providerCode?: string | null;
+          providerMode?: string | null;
+          providerStatus?: string | null;
+          verificationStatus?: string | null;
+        } | null;
+        verificationStatus: string;
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert.equal(
+        d4signEvidence.providerReadiness?.providerCode,
+        "d4sign",
+        "GET /documents/:id/evidence deveria expor readiness D4Sign seguro."
+      );
+      assert.equal(
+        d4signEvidence.providerReadiness?.providerMode,
+        "simulated",
+        "GET /documents/:id/evidence deveria refletir modo D4Sign simulated."
+      );
+      assert.equal(
+        d4signEvidence.providerReadiness?.hmacValid,
+        true,
+        "GET /documents/:id/evidence deveria refletir HMAC simulated valido."
+      );
+      assert.notEqual(
+        d4signEvidence.verificationStatus,
+        "verified",
+        "D4Sign simulated nao pode marcar verificationStatus=verified."
+      );
+      assert(
+        !JSON.stringify(d4signEvidence).includes("storageObjectPath"),
+        "GET /documents/:id/evidence com D4Sign simulated nao deve expor storageObjectPath."
+      );
+
+      logStep("Validando D4Sign unconfigured sem chamada externa");
+
+      const d4signUnconfiguredDocument = await requestJson<{
+        signatureRequests?: Array<{
+          id: string;
+          latestDispatch?: {
+            dispatchStatus?: string | null;
+          } | null;
+          providerCode?: string | null;
+          requestStatus: string;
+        }>;
+      }>(
+        `/documents/${createdDocument.id}/signature-requests`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            signerType: "patient",
+            signerEmail: "paciente-smoke-d4sign-pendente@emagreceplus.local",
+            providerCode: "d4sign_unconfigured",
+          }),
+        },
+        201
+      );
+
+      const d4signUnconfiguredRequest = d4signUnconfiguredDocument.signatureRequests?.find(
+        (request) => request.providerCode === "d4sign" && request.requestStatus === "pending"
+      );
+
+      assert(
+        d4signUnconfiguredRequest,
+        "D4Sign unconfigured deveria manter solicitacao pendente."
+      );
+      assert.equal(
+        d4signUnconfiguredRequest?.latestDispatch?.dispatchStatus,
+        "skipped",
+        "D4Sign unconfigured deveria registrar dispatch skipped, sem envio externo."
+      );
+
+      const d4signUnconfiguredEvidence = await requestJson<{
+        providerReadiness?: {
+          credentialsPending?: boolean;
+          providerMode?: string | null;
+          providerStatus?: string | null;
+          verificationStatus?: string | null;
+        } | null;
+        verificationStatus: string;
+      }>(`/documents/${createdDocument.id}/evidence`);
+
+      assert.equal(
+        d4signUnconfiguredEvidence.providerReadiness?.providerMode,
+        "unconfigured",
+        "GET /documents/:id/evidence deveria refletir D4Sign unconfigured."
+      );
+      assert.equal(
+        d4signUnconfiguredEvidence.providerReadiness?.providerStatus,
+        "provider_config_missing",
+        "D4Sign unconfigured deveria retornar provider_config_missing."
+      );
+      assert.equal(
+        d4signUnconfiguredEvidence.providerReadiness?.credentialsPending,
+        true,
+        "D4Sign unconfigured deveria sinalizar credenciais pendentes."
+      );
+      assert.notEqual(
+        d4signUnconfiguredEvidence.verificationStatus,
+        "verified",
+        "D4Sign unconfigured nao pode marcar verificationStatus=verified."
+      );
+      assert(
+        !JSON.stringify(d4signUnconfiguredEvidence).includes("storageObjectPath"),
+        "GET /documents/:id/evidence com D4Sign unconfigured nao deve expor storageObjectPath."
+      );
+
     }
 
     const completedEncounter = await requestJson<{
