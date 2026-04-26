@@ -10,6 +10,7 @@ export type AppPermission =
   | "crm:write"
   | "clinical:view"
   | "clinical:write"
+  | "notifications:view"
   | "settings:view";
 
 export type AppRole =

@@ -10,6 +10,7 @@ export const permissions = {
   crmWrite: "crm:write",
   clinicalView: "clinical:view",
   clinicalWrite: "clinical:write",
+  notificationsView: "notifications:view",
   settingsView: "settings:view",
 } satisfies Record<string, PermissionKey>;
 
@@ -24,6 +25,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.crmWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
     permissions.settingsView,
   ],
   admin: [
@@ -36,6 +38,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.crmWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
     permissions.settingsView,
   ],
   manager: [
@@ -48,6 +51,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.crmWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
     permissions.settingsView,
   ],
   clinician: [
@@ -57,6 +61,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.scheduleWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
   ],
   physician: [
     permissions.dashboardView,
@@ -65,6 +70,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.scheduleWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
   ],
   nutritionist: [
     permissions.dashboardView,
@@ -73,6 +79,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.scheduleWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
   ],
   assistant: [
     permissions.dashboardView,
@@ -82,6 +89,7 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.scheduleWrite,
     permissions.crmView,
     permissions.crmWrite,
+    permissions.notificationsView,
   ],
   reception: [
     permissions.dashboardView,
@@ -89,11 +97,13 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.patientsWrite,
     permissions.scheduleView,
     permissions.scheduleWrite,
+    permissions.notificationsView,
   ],
   sales: [
     permissions.dashboardView,
     permissions.crmView,
     permissions.crmWrite,
+    permissions.notificationsView,
   ],
   nursing: [
     permissions.dashboardView,
@@ -102,9 +112,11 @@ export const rolePermissions: Record<AuthRole, PermissionKey[]> = {
     permissions.scheduleWrite,
     permissions.clinicalView,
     permissions.clinicalWrite,
+    permissions.notificationsView,
   ],
   financial: [
     permissions.dashboardView,
+    permissions.notificationsView,
     permissions.settingsView,
   ],
   patient: [],

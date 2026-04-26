@@ -1,4 +1,5 @@
 import {
+  Bell,
   Briefcase,
   CalendarDays,
   FileText,
@@ -20,6 +21,7 @@ export type SidebarItemConfig = {
 
 export const sidebarItems: SidebarItemConfig[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "dashboard:view" },
+  { href: "/notifications", label: "Notificacoes", icon: Bell, permission: "notifications:view" },
   { href: "/patients", label: "Pacientes", icon: Users, permission: "patients:view" },
   { href: "/schedule", label: "Agenda", icon: CalendarDays, permission: "schedule:view" },
   { href: "/crm", label: "CRM", icon: Briefcase, permission: "crm:view" },
